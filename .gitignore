@@ -1,0 +1,54 @@
+# SECRETS — never commit these
+.env
+*.env
+.env.*
+
+# Database — grows to 500MB, too large for GitHub
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated outputs — not source code
+outputs/
+logs/
+
+# Trained ML models — too large
+data/models/
+*.pkl
+*.joblib
+*.pickle
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+
+# OS files
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Jupyter notebooks (if any)
+.ipynb_checkpoints/
