@@ -1204,27 +1204,38 @@ def _get_dynamic_structure(context: dict) -> dict:
         },
         "FII_DRIVEN_RALLY": {
             "opening_instruction": (
-                "Lead with FII flows and their specific size. Do not start with NIFTY level."
+                "Lead with FII flows and their specific size in crore. Do not start with NIFTY level. "
+                "Do NOT name individual stocks — the data does not include stock-level FII flows. "
+                "Instead name the top 2 SECTORS by contribution (use the sector contribution table above)."
             ),
             "required_angles": [
-                "Name which large-cap stocks received the most FII inflow and their weight effect on NIFTY",
-                "Explain whether domestic (DII) flows supported or offset this",
-                "State what global catalyst (Fed, US yields, USD) is driving the FII decision",
+                "Name the top 2 sectors by weight × return contribution from the SECTOR CONTRIBUTIONS table "
+                "above and explain why FII money flowed into those sectors today (rate sensitivity, "
+                "rupee impact, or global sector rotation)",
+                "Explain whether domestic (DII) flows supported or offset the FII inflows — "
+                "use the FII signal from verified data (net crore figure)",
+                "State what global catalyst (Fed stance, US yields, DXY direction, EM risk appetite) "
+                "is driving the FII decision today",
             ],
             "closing_instruction": (
-                "Identify the flow sustainability signal — what FII behaviour tomorrow would confirm or deny continuation."
+                "Identify the flow sustainability signal — what FII behaviour tomorrow (net crore level) "
+                "would confirm continuation vs reversal."
             ),
             "tone": "confident, flow-driven",
             "word_limit": 210,
         },
         "FII_DRIVEN_SELLOFF": {
             "opening_instruction": (
-                "Open with the scale of FII exit and which market cap segment bore the brunt."
+                "Open with the scale of FII exit in crore and which sectors bore the brunt. "
+                "Do NOT name individual stocks — use sector-level data from the table above only."
             ),
             "required_angles": [
-                "Explain the global risk-off trigger (VIX, US yields, EM contagion) behind the FII exit",
-                "Name the sectors where FII selling created the most NIFTY damage (use weight × return)",
-                "Assess whether DII absorption was sufficient or insufficient to limit damage",
+                "Explain the global risk-off trigger (VIX level, US yields direction, EM contagion) "
+                "behind the FII exit — use actual VIX value from verified data above",
+                "Name the top 2 sectors from the SECTOR CONTRIBUTIONS table where FII selling "
+                "created the most NIFTY damage — use weight × return math explicitly",
+                "Assess whether DII absorption was sufficient or insufficient — "
+                "reference the net FII crore figure from verified data",
             ],
             "closing_instruction": (
                 "State the level at which FII outflows historically reverse based on VIX or INR data."

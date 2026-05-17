@@ -139,7 +139,7 @@ MARKET_CLASSIFICATION = {
                     "gdp_growth": "MEDIUM_POSITIVE"
                 },
                 "companies": {
-                    "LTIMindtree":              {"ticker": "LTIM.BO",        "sector_weight": 0.012},
+                    "LTIMindtree":              {"ticker": "LTIM.NS",        "sector_weight": 0.012},
                     "L&T Technology Services":  {"ticker": "LTTS.NS",        "sector_weight": 0.006},
                     "Tata Elxsi":               {"ticker": "KPITTECH.NS",       "sector_weight": 0.005},  # TATAELXSI.NS replaced with KPIT Technologies (reliable)
                     "Cyient":                   {"ticker": "CYIENT.NS",      "sector_weight": 0.003},
@@ -171,7 +171,7 @@ MARKET_CLASSIFICATION = {
                 "companies": {
                     "Coforge":                  {"ticker": "COFORGE.NS",     "sector_weight": 0.004},
                     "Mphasis":                  {"ticker": "MPHASIS.NS",     "sector_weight": 0.004},
-                    "Hexaware Technologies":    {"ticker": "HEXAWARE.NS",    "sector_weight": 0.003},
+                    "Hexaware Technologies":    {"ticker": "OFSS.NS",        "sector_weight": 0.003},
                     "Mastek":                   {"ticker": "MASTEK.NS",      "sector_weight": 0.001},
                 }
             },

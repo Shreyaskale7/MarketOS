@@ -58,7 +58,7 @@ HORIZONS_TRAINED = ["1M", "3M", "6M"]   # models exist for these only
 # at 45% compressed real signal into an artificial flat distribution.
 # AFTER: 60% matches the 12M cap philosophy — soft_cap() then compresses
 # values beyond 60%, preserving relative ranking between sectors.
-OUTPUT_CAPS = {"1M": 15.0, "3M": 25.0, "6M": 30.0, "12M": 38.0}
+OUTPUT_CAPS = {"1M": 15.0, "3M": 25.0, "6M": 30.0, "12M": 30.0}
 
 # MODULE 6: Hard output clamp applied AFTER all horizon calculations
 FORECAST_MIN_ANNUAL = -50.0   # absolute floor across all horizons
@@ -1006,11 +1006,21 @@ def generate_ml_forecasts(macro_data, regime):
                 }
 
             sector_forecasts[subsector_name] = horizon_forecasts
+            # Apply OUTPUT_CAPS clipping to displayed values
+            def _capped(h):
+                val = horizon_forecasts.get(h, {}).get("base_case_return_pct", 0.0)
+                cap = OUTPUT_CAPS.get(h, 60.0)
+                clipped = float(np.clip(val, -cap, cap))
+                # Update the dict in-place so downstream also gets capped value
+                if h in horizon_forecasts:
+                    horizon_forecasts[h]["base_case_return_pct"] = round(clipped, 2)
+                return clipped
+
             print(
                 f"  {subsector_name[:42]:42s} "
-                f"1M={horizon_forecasts['1M']['base_case_return_pct']:+6.1f}% "
-                f"3M={horizon_forecasts['3M']['base_case_return_pct']:+6.1f}% "
-                f"6M={horizon_forecasts['6M']['base_case_return_pct']:+6.1f}%"
+                f"1M={_capped('1M'):+6.1f}% "
+                f"3M={_capped('3M'):+6.1f}% "
+                f"6M={_capped('6M'):+6.1f}%"
             )
 
         all_forecasts[sector_name] = sector_forecasts
@@ -1392,15 +1402,25 @@ def _store_ml_forecasts(all_forecasts, generated_date):
     for sector_name, sub_dict in all_forecasts.items():
         for subsector_name, h_dict in sub_dict.items():
             for h_label, fc in h_dict.items():
+                # Hard-cap returns at OUTPUT_CAPS before storing
+                _cap          = OUTPUT_CAPS.get(h_label, 60.0)
+                _base         = float(fc.get("base_case_return_pct", 0))
+                _bull         = float(fc.get("bull_case_return_pct", 0))
+                _bear         = float(fc.get("bear_case_return_pct", 0))
+                # Clip base to [-cap, +cap], bull/bear follow proportionally
+                _base_clipped = float(np.clip(_base, -_cap, _cap))
+                _ratio        = (_base_clipped / _base) if abs(_base) > 0.01 else 1.0
+                _bull_clipped = float(np.clip(_bull * _ratio, -_cap * 1.2, _cap * 1.2))
+                _bear_clipped = float(np.clip(_bear * _ratio, -_cap * 1.2, _cap * 1.2))
                 records.append({
                     "generated_date":    generated_date,
                     "forecast_horizon":  h_label,
                     "target_date":       fc.get("target_date", ""),
                     "sector":            sector_name,
                     "subsector":         subsector_name,
-                    "base_case_return":  round(float(fc.get("base_case_return_pct", 0)), 3),
-                    "bull_case_return":  round(float(fc.get("bull_case_return_pct", 0)), 3),
-                    "bear_case_return":  round(float(fc.get("bear_case_return_pct", 0)), 3),
+                    "base_case_return":  round(_base_clipped, 3),
+                    "bull_case_return":  round(_bull_clipped, 3),
+                    "bear_case_return":  round(_bear_clipped, 3),
                     "confidence_score":  round(float(fc.get("confidence_score", 0)), 3),
                     "opportunity_score": round(float(fc.get("opportunity_score", 5)), 2),
                     "primary_catalyst":  fc.get("primary_catalyst", "")[:250],

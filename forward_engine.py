@@ -1156,20 +1156,21 @@ def build_opportunity_prompt(opportunities_by_horizon, comparison, regime, macro
     opp_3m_text = "\n".join([enrich_opportunity(o) for o in top_3m])
     opp_6m_text = "\n".join([enrich_opportunity(o) for o in top_6m])
 
-    # ── DYNAMIC EVENT CALENDAR ─────────────────────────────────────────────
+    # ── DYNAMIC EVENT CALENDAR ────────────────────────────────────
     from datetime import date as _date_cls, timedelta as _td
 
     _today = _date_cls.today()
 
     def _days_away(d):
         delta = (d - _today).days
-        if delta <= 0:    return "this week"
-        elif delta == 1:  return "tomorrow"
-        elif delta <= 7:  return f"in {delta} days"
+        if delta < 0:    return "ongoing"
+        elif delta == 0: return "today"
+        elif delta == 1: return "tomorrow"
+        elif delta <= 7: return f"in {delta} days"
         elif delta <= 30: return f"in ~{delta // 7} week{'s' if delta // 7 > 1 else ''}"
         else:             return f"in ~{delta // 30} month{'s' if delta // 30 > 1 else ''}"
 
-    # RBI MPC — bi-monthly schedule
+    # RBI MPC — bi-monthly, first week of even months
     _rbi_schedule = [
         _date_cls(2026, 6, 4),  _date_cls(2026, 8, 5),
         _date_cls(2026, 10, 7), _date_cls(2026, 12, 3),
@@ -1178,7 +1179,7 @@ def build_opportunity_prompt(opportunities_by_horizon, comparison, regime, macro
     _next_rbi = next((d for d in _rbi_schedule if d >= _today), _rbi_schedule[-1])
     _rbi_end  = _next_rbi + _td(days=2)
 
-    # FOMC schedule 2026-2027
+    # FOMC 2026-2027
     _fomc_schedule = [
         _date_cls(2026, 3, 18), _date_cls(2026, 5, 6),
         _date_cls(2026, 6, 17), _date_cls(2026, 7, 28),
@@ -1192,25 +1193,25 @@ def build_opportunity_prompt(opportunities_by_horizon, comparison, regime, macro
     if _today < _date_cls(2026, 6, 30):
         _earn_label = "Q4 FY26"
         _earn_start = _date_cls(2026, 4, 14)
-        _earn_lead  = "TCS (Apr 10), HDFC Bank (Apr 19), Infosys (Apr 17)"
-        _earn_watch = "IT deal TCV and revenue guidance, bank NIM trajectory, OMC inventory gains"
+        _earn_lead  = "TCS, HDFC Bank, Infosys, Reliance"
+        _earn_watch = "IT deal TCV, bank NIM guidance, OMC inventory gains"
     elif _today < _date_cls(2026, 9, 30):
         _earn_label = "Q1 FY27"
         _earn_start = _date_cls(2026, 7, 7)
         _earn_lead  = "TCS (Jul 10), HDFC Bank (Jul 19), Infosys (Jul 17)"
-        _earn_watch = "Q1 volume growth vs guidance, NIM commentary post rate cuts, auto volume data"
+        _earn_watch = "Q1 revenue growth vs guidance, NIM post-rate-cut, auto volume data"
     elif _today < _date_cls(2026, 12, 31):
         _earn_label = "Q2 FY27"
         _earn_start = _date_cls(2026, 10, 7)
         _earn_lead  = "IT majors lead second week of October"
-        _earn_watch = "H2 demand commentary, FII impact on banking asset quality, festive auto sales"
+        _earn_watch = "H2 demand commentary, FII impact on banking asset quality"
     else:
         _earn_label = "Q3 FY27"
         _earn_start = _date_cls(2027, 1, 10)
         _earn_lead  = "TCS leads mid-January"
-        _earn_watch = "Union Budget impact on capex sectors, IT pipeline for CY27"
+        _earn_watch = "Budget impact on capex sectors, IT pipeline for CY27"
 
-    # OPEC+ approximate bi-monthly schedule
+    # OPEC+
     _opec_schedule = [
         _date_cls(2026, 6, 1),  _date_cls(2026, 8, 3),
         _date_cls(2026, 10, 5), _date_cls(2026, 12, 7),
@@ -1218,7 +1219,7 @@ def build_opportunity_prompt(opportunities_by_horizon, comparison, regime, macro
     ]
     _next_opec = next((d for d in _opec_schedule if d >= _today), _date_cls(2027, 2, 2))
 
-    # Next CPI release — 12th of each month (MoSPI)
+    # CPI — 12th of each month
     if _today.day < 12:
         _next_cpi = _date_cls(_today.year, _today.month, 12)
     else:
@@ -1229,23 +1230,23 @@ def build_opportunity_prompt(opportunities_by_horizon, comparison, regime, macro
     upcoming_events = f"""
   1. RBI Monetary Policy Committee — {_next_rbi.strftime('%B %d')}-{_rbi_end.day}, {_next_rbi.year} ({_days_away(_next_rbi)})
      Watch: Rate decision and inflation vs growth guidance.
-     Signal: Cut → PSU Banks rally on NIM expansion with 1-2Q lag; Hold with hawkish tone → rate-sensitive sectors stay under pressure.
+     Signal: Cut → PSU Banks NIM expands with 1-2Q lag; Hawkish hold → rate-sensitive sectors under pressure.
 
   2. US Federal Reserve FOMC — {_next_fomc.strftime('%B %d')}-{_fomc_end.day}, {_next_fomc.year} ({_days_away(_next_fomc)})
-     Watch: Fed dot plot revision and terminal rate path.
-     Signal: Dovish shift → EM risk-on, FII inflows to India; Hawkish → rupee pressure, FII selling in Banking and IT.
+     Watch: Fed dot plot and terminal rate path.
+     Signal: Dovish → EM risk-on, FII inflows; Hawkish → rupee pressure, FII selling.
 
-  3. {_earn_label} Earnings Season — from {_earn_start.strftime('%B %d, %Y')} ({_days_away(_earn_start)})
+  3. {_earn_label} Earnings Season — {_earn_start.strftime('%B %d, %Y')} ({_days_away(_earn_start)})
      Lead reporters: {_earn_lead}
      Watch: {_earn_watch}
 
   4. OPEC+ Production Decision — {_next_opec.strftime('%B %Y')} ({_days_away(_next_opec)})
-     Watch: Quota decision determines crude trajectory.
-     Signal: Cut → crude sustains above ${crude_val:.0f} → OMC margin pressure; Hike → crude falls → OMC relief, rupee support.
+     Watch: Supply quota determines crude trajectory.
+     Signal: Cut → crude above ${crude_val:.0f} → OMC margin pressure; Hike → crude falls → OMC relief.
 
   5. CPI Inflation Print (MoSPI) — {_next_cpi.strftime('%B %d, %Y')} ({_days_away(_next_cpi)})
-     Watch: Headline vs core. Above 5.5% reduces RBI cut probability; below 4.5% opens door for additional 25bps."""
-    # ── END DYNAMIC EVENT CALENDAR ─────────────────────────────────────────────
+     Watch: Above 5.5% reduces RBI cut probability; below 4.5% opens door for additional 25bps."""
+    # ── END DYNAMIC EVENT CALENDAR ────────────────────────────────
 
     prompt = f"""
 You are MarketOS — India's forward-looking market intelligence engine.

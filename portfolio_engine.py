@@ -26,11 +26,12 @@ warnings.filterwarnings("ignore")
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────
 MAX_WEIGHT          = 0.20    # tighter cap: reduces concentration, improves Sharpe
-MIN_WEIGHT          = 0.06    # FIX 3: minimum 6%
+MIN_WEIGHT          = 0.04    # lowered: 4% floor allows more positions to survive
 ALPHA_MIN_THRESHOLD = 0.45    # FIX 4: soft filter — drop alpha < 0.45
 HIGH_VOL_PENALTY_T  = 30.0    # FIX 1: soft penalty above 30% vol
 VOL_SCALE_THRESH    = 20.0    # inverse-vol sizing threshold
 MAX_THEME_WEIGHT    = 0.40
+MAX_SECTOR_WEIGHT   = 0.50    # no single sector above 50% of portfolio
 TOP3_CAP            = 0.60
 TOP_SECTORS_KEEP    = 6
 MIN_SECTORS         = 4
@@ -152,6 +153,21 @@ def _load_correlation_matrix(lookback_days: int = VOL_LOOKBACK_DAYS) -> pd.DataF
 
 def _enforce_theme_cap(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+
+    # ── SECTOR CAP: no single sector above MAX_SECTOR_WEIGHT ─────
+    sector_weights = {}
+    for _, row in df.iterrows():
+        sec = row["sector"]
+        sector_weights[sec] = sector_weights.get(sec, 0.0) + row["weight"]
+    for sec, total_w in sector_weights.items():
+        if total_w > MAX_SECTOR_WEIGHT:
+            scale = MAX_SECTOR_WEIGHT / total_w
+            for idx, row in df.iterrows():
+                if row["sector"] == sec:
+                    df.loc[idx, "weight"] *= scale
+            print(f"  ⚠ Sector '{sec}' capped: {total_w:.1%} → {MAX_SECTOR_WEIGHT:.0%}")
+
+    # ── THEME CAP: no single theme above MAX_THEME_WEIGHT ────────
     theme_weights = {}
     for _, row in df.iterrows():
         theme = THEME_MAP.get(row["sector"], "other")
