@@ -58,7 +58,7 @@ HORIZONS_TRAINED = ["1M", "3M", "6M"]   # models exist for these only
 # at 45% compressed real signal into an artificial flat distribution.
 # AFTER: 60% matches the 12M cap philosophy — soft_cap() then compresses
 # values beyond 60%, preserving relative ranking between sectors.
-OUTPUT_CAPS = {"1M": 15.0, "3M": 25.0, "6M": 30.0, "12M": 30.0}
+OUTPUT_CAPS = {"1M": 15.0, "3M": 25.0, "6M": 30.0, "12M": 25.0}
 
 # MODULE 6: Hard output clamp applied AFTER all horizon calculations
 FORECAST_MIN_ANNUAL = -50.0   # absolute floor across all horizons

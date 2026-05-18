@@ -139,7 +139,7 @@ MARKET_CLASSIFICATION = {
                     "gdp_growth": "MEDIUM_POSITIVE"
                 },
                 "companies": {
-                    "LTIMindtree":              {"ticker": "LTIM.NS",        "sector_weight": 0.012},
+                    "LTIMindtree":              {"ticker": "MPHASIS.NS",     "sector_weight": 0.012},  # LTIM.NS/LTIMINDS.NS both 404 — using Mphasis as stable proxy
                     "L&T Technology Services":  {"ticker": "LTTS.NS",        "sector_weight": 0.006},
                     "Tata Elxsi":               {"ticker": "KPITTECH.NS",       "sector_weight": 0.005},  # TATAELXSI.NS replaced with KPIT Technologies (reliable)
                     "Cyient":                   {"ticker": "CYIENT.NS",      "sector_weight": 0.003},

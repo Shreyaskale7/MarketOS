@@ -1089,8 +1089,17 @@ if __name__ == "__main__":
         # --force bypasses cache and recomputes from scratch (needed after data updates)
         _args     = sys.argv[2:]
         _force    = "--force" in _args
-        _yrs_args = [a for a in _args if a.isdigit()]
-        yrs       = int(_yrs_args[0]) if _yrs_args else 3
+        # Sanitize: strip non-numeric characters so '3M', '5Y', '3yr' all work
+        _yrs_args = []
+        for a in _args:
+            if a.startswith("--"):
+                continue
+            cleaned = ''.join(c for c in a if c.isdigit())
+            if cleaned:
+                _yrs_args.append(cleaned)
+        yrs = int(_yrs_args[0]) if _yrs_args else 3
+        # Clamp to valid range: 1-10 years
+        yrs = max(1, min(10, yrs))
 
         if _force:
             print(f"\nRunning {yrs}-year walk-forward backtest (FORCE RECOMPUTE)...")

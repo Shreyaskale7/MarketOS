@@ -536,19 +536,15 @@ def run_status():
 # ENTRY POINT
 # ─────────────────────────────────────────────────────────────────
 
+# ── Production startup ────────────────────────────────────────
+try:
+    from database import ensure_tables_exist
+    ensure_tables_exist()
+    print("  ✓ Database tables verified")
+except Exception as e:
+    print(f"  ⚠ Database warning: {e}")
+
 if __name__ == "__main__":
-    print("\n" + "═"*60)
-    print("  MarketOS API Gateway v2.0")
-    print("  http://localhost:5001")
-    print("  Press Ctrl+C to stop")
-    print("═"*60 + "\n")
-
-    # Ensure DB is ready before accepting requests
-    try:
-        from database import ensure_tables_exist
-        ensure_tables_exist()
-        print("  ✓ Database ready")
-    except Exception as e:
-        print(f"  ⚠ Database warning: {e}")
-
-    app.run(host="0.0.0.0", port=5001, debug=False, threaded=True)
+    port = int(os.environ.get("PORT", 5001))
+    print(f"\n  MarketOS API — port {port}")
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

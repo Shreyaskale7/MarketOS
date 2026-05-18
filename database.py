@@ -11,12 +11,26 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # ── Create ALL required folders before anything else ─────────────
-for folder in ["data", "data/raw", "data/processed", "data/models",
-               "outputs", "logs"]:
+# Create folders — handle both local and production paths
+_base = "/data" if os.path.exists("/data") else "."
+for folder in [
+    f"{_base}/data", f"{_base}/data/raw",
+    f"{_base}/data/processed", f"{_base}/data/models",
+    "outputs", "logs"
+]:
     os.makedirs(folder, exist_ok=True)
 
 # ── Database connection ───────────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/marketos.db")
+# In production (Railway), use /data volume mount if available
+# Locally falls back to data/marketos.db
+_db_path = os.getenv("DATABASE_URL")
+if not _db_path:
+    # Check if running on Railway with persistent volume
+    if os.path.exists("/data"):
+        _db_path = "sqlite:////data/marketos.db"
+    else:
+        _db_path = "sqlite:///data/marketos.db"
+DATABASE_URL = _db_path
 engine = create_engine(
     DATABASE_URL,
     echo=False,

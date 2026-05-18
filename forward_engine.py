@@ -496,7 +496,8 @@ def generate_forward_forecasts(macro_data, regime):
 
                 catalyst, risk = identify_catalysts_and_risks(
                     subsector_name, sector_name, macro_data, regime,
-                    crude_direction, nasdaq_direction
+                    crude_direction, nasdaq_direction,
+                    horizon=h_label
                 )
 
                 horizon_forecasts[h_label] = {
@@ -738,11 +739,67 @@ def compute_opportunity_score(subsector, sector, base_return, bull_return,
 
 def identify_catalysts_and_risks(subsector, sector, macro_data, regime,
                                   crude_direction="STABLE",
-                                  nasdaq_direction="FLAT"):
+                                  nasdaq_direction="FLAT",
+                                  horizon="3M"):
     """
     Returns domain-specific catalyst and risk strings.
     Uses crude_direction and nasdaq_direction to prevent generic responses.
     """
+    # ── HORIZON-SPECIFIC CATALYST OVERRIDE ───────────────────────────────
+    # For subsectors with horizon-dependent drivers, return early with
+    # the horizon-appropriate catalyst instead of the generic one.
+    horizon_specific = {
+        "Industrial & Defence": {
+            "1M":  ("Near-term defence order inflow data and quarterly results commentary "
+                    "from HAL and BEL; budget utilisation rate for Q4 capex",
+                    "Order pipeline delay risk; government payment cycle slower in Q4"),
+            "3M":  ("Defence budget capex allocation → multi-year order book visibility; "
+                    "indigenisation mandate reducing import dependency",
+                    "Government payment cycle delays create working capital pressure; "
+                    "long execution timelines make quarterly results lumpy"),
+            "6M":  ("Structural: 68% domestic procurement mandate drives 3-5yr revenue CAGR; "
+                    "export pipeline to friendly nations growing at 25% YoY",
+                    "Geopolitical de-escalation reducing urgency; rupee appreciation "
+                    "compressing export revenue in INR"),
+            "12M": ("Defence sector 10-year capex plan of ₹13L Cr is structurally locked; "
+                    "private sector participation increasing through JV mandates",
+                    "Policy reversal risk on indigenisation; US arms sales competing "
+                    "with domestic production timelines"),
+        },
+        "Power Generation & Utilities": {
+            "1M":  ("Seasonal peak power demand driving PLF; Q4 distribution company payments",
+                    "Monsoon arrival timing affecting hydro PLF; coal supply constraints"),
+            "3M":  ("Rate cut reducing cost of capital for capital-intensive generation assets; "
+                    "RPO compliance driving DISCOMs to accelerate procurement",
+                    "Fuel cost volatility; state DISCOM payment delays"),
+            "6M":  ("500GW renewable target creating structural capacity addition pipeline; "
+                    "ISTS charges waiver making RE cost-competitive with coal",
+                    "Grid integration challenges; DISCOM financial health limiting PPA offtake"),
+            "12M": ("India's power demand growing at 7-8% CAGR; capacity addition target "
+                    "requires ₹30L Cr investment over decade",
+                    "Policy risk on RPO targets; renewable intermittency requiring storage investment"),
+        },
+        "Healthcare & Hospitals": {
+            "1M":  ("Occupancy recovery post-winter peak; ARPOB expansion from premium ward mix",
+                    "Insurance claim rejection rates rising; doctor attrition pressure on margins"),
+            "3M":  ("Occupancy recovery with domestic and international medical tourism; "
+                    "high-margin international patient segment growing",
+                    "Nursing and doctor wage inflation compressing EBITDA by 150-200bps; "
+                    "NPPA pricing pressure on branded generics"),
+            "6M":  ("Hospital capacity additions converting to revenue as ramp-up period ends; "
+                    "health insurance penetration driving volume growth",
+                    "Greenfield hospital gestation period 5-7 years; NABH compliance costs"),
+            "12M": ("India's healthcare spend as % of GDP rising from 3.5% to 5% target; "
+                    "private hospitals capturing increasing share",
+                    "NHPS reimbursement rate compression; public healthcare competition"),
+        },
+    }
+
+    # Check if this subsector has horizon-specific catalysts
+    if subsector in horizon_specific and horizon in horizon_specific[subsector]:
+        return horizon_specific[subsector][horizon]
+    # ── END HORIZON-SPECIFIC ───────────────────────────────────────────
+
     # Specific crude-aware catalysts for energy subsectors
     if "oil refin" in subsector.lower() or "refin" in subsector.lower():
         if crude_direction == "SPIKING":
@@ -814,8 +871,10 @@ def identify_catalysts_and_risks(subsector, sector, macro_data, regime,
                                     "Inventory overhang in commercial; RERA compliance cost"),
         "Cement":                  ("Infrastructure boom driving cement demand; housing upcycle",
                                     "Coal and pet coke cost inflation; freight cost increases"),
-        "Industrial & Defence":    ("Defence indigenisation (Make in India) driving order books; export opportunities",
-                                    "Long execution cycles; payment delays from government clients"),
+        "Industrial & Defence":    ("Defence indigenisation mandate requiring 68% domestic procurement; "
+                                    "multi-year order book providing revenue visibility",
+                                    "Government payment cycle delays create working capital pressure; "
+                                    "long execution timelines make quarterly results lumpy"),
     }
 
     for key, (catalyst, risk) in CATALYSTS.items():

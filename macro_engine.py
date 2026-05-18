@@ -1119,17 +1119,17 @@ def _classify_market_context(moderated_output: dict) -> dict:
 
     if abs(nifty_ret) > 1.5:
         narratives.append("HIGH_VOLATILITY_DAY")
-    if abs(nifty_ret) < 0.15:
+    if abs(nifty_ret) < 0.30:                          # was 0.15 — now catches ±0.30% days
         narratives.append("FLAT_MARKET_DAY")
-    if vix > 20:
+    if vix > 19:                                        # was 20 — VIX 19.x is genuinely elevated
         narratives.append("FEAR_SPIKE")
-    if fii_signal == "NET_BUYING" and nifty_ret > 0.5:
+    if fii_signal == "NET_BUYING" and nifty_ret > 0.3:  # was 0.5 — catches moderate FII rallies
         narratives.append("FII_DRIVEN_RALLY")
-    if fii_signal == "NET_SELLING" and nifty_ret < -0.5:
+    if fii_signal == "NET_SELLING" and nifty_ret < -0.3: # was -0.5
         narratives.append("FII_DRIVEN_SELLOFF")
-    if abs(crude_chg) > 2.0:
+    if abs(crude_chg) > 1.5:                            # was 2.0 — catches +1.9% crude days
         narratives.append("CRUDE_SHOCK")
-    if abs(usdinr_chg) > 0.4:
+    if abs(usdinr_chg) > 0.3:                           # was 0.4 — catches mild rupee moves
         narratives.append("RUPEE_MOVE")
     if len(divergent_sectors) >= 3:
         narratives.append("BROAD_DIVERGENCE")
@@ -1187,9 +1187,10 @@ def _get_dynamic_structure(context: dict) -> dict:
         },
         "FLAT_MARKET_DAY": {
             "opening_instruction": (
-                "Do NOT write 'NIFTY was flat today.' That is obvious. Instead open with "
-                "what is building underneath the surface — which sectors are quietly rotating, "
-                "which macro data is setting up next week's move."
+                "Do NOT write 'NIFTY was flat' or 'NIFTY closed marginally'. That is obvious. "
+                "Open with the SECTOR that moved most sharply despite the flat index — use the "
+                "sector contribution table above (weight × return). "
+                "Example: 'Infrastructure fell -0.95% today despite a flat NIFTY because...'"
             ),
             "required_angles": [
                 "Identify the sector rotation happening beneath a flat index (biggest gainer vs loser)",

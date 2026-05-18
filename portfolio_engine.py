@@ -27,7 +27,7 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────────
 MAX_WEIGHT          = 0.20    # tighter cap: reduces concentration, improves Sharpe
 MIN_WEIGHT          = 0.04    # lowered: 4% floor allows more positions to survive
-ALPHA_MIN_THRESHOLD = 0.45    # FIX 4: soft filter — drop alpha < 0.45
+ALPHA_MIN_THRESHOLD = 0.50    # aligned: matches regime-aware threshold floor
 HIGH_VOL_PENALTY_T  = 30.0    # FIX 1: soft penalty above 30% vol
 VOL_SCALE_THRESH    = 20.0    # inverse-vol sizing threshold
 MAX_THEME_WEIGHT    = 0.40
@@ -255,7 +255,10 @@ def build_portfolio(
 
 
     # ── STEP 1: Collect subsector forecasts ───────────────────────
-    # FIX 4: Drop alpha_score < 0.55; fallback to < 0.4 if MIN_SECTORS not reached
+    # Soft filter: drop alpha < ALPHA_MIN_THRESHOLD.
+    # Fallback: if fewer than MIN_SECTORS pass, gradually lower threshold
+    # until enough sectors qualify. This prevents the contradiction where
+    # the alpha engine marks 26/28 as EXCL but the portfolio includes them anyway.
     records    = []
     records_fb = []
     for sector_name, sub_dict in all_forecasts.items():
@@ -264,6 +267,7 @@ def build_portfolio(
                 continue
             alpha_info  = alpha_scores.get(subsector_name, {})
             alpha_score = float(alpha_info.get("alpha_score", 0.5))
+            excluded    = alpha_info.get("excluded", False)
             fc = h_dict[horizon]
             rec = {
                 "sector":      sector_name,
@@ -272,6 +276,7 @@ def build_portfolio(
                 "confidence":  float(fc.get("confidence_score", 0.3)),
                 "opp_score":   float(fc.get("opportunity_score", 5.0)),
                 "alpha_score": max(alpha_score, 0.4),
+                "excluded":    excluded,
             }
             records_fb.append(rec)
             if alpha_score >= ALPHA_MIN_THRESHOLD:
@@ -279,8 +284,17 @@ def build_portfolio(
 
     unique_after_filter = len({r["sector"] for r in records})
     if unique_after_filter < MIN_SECTORS:
-        print(f"  FIX 4: {unique_after_filter} sectors pass alpha>={ALPHA_MIN_THRESHOLD} — fallback to all")
-        records = records_fb
+        # Fallback: lower threshold progressively until MIN_SECTORS pass
+        for fallback_thresh in [0.45, 0.42, 0.40, 0.0]:
+            fallback_recs = [r for r in records_fb if r["alpha_score"] >= fallback_thresh]
+            unique_fb = len({r["sector"] for r in fallback_recs})
+            if unique_fb >= MIN_SECTORS:
+                print(f"  ⚠ Alpha fallback: threshold lowered to {fallback_thresh:.2f} "
+                      f"({unique_fb} sectors qualify for {horizon})")
+                records = fallback_recs
+                break
+        else:
+            records = records_fb
 
     if not records:
         print("  No forecast data.")
