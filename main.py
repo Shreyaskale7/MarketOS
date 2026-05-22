@@ -5,6 +5,19 @@
 import os
 import sys
 import json
+
+# Ensure UTF-8 output on standard streams (especially on Windows)
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr.encoding != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()
@@ -15,8 +28,8 @@ load_dotenv()
 # Last updated: 2026-05-08
 # Sources: RBI (repo rate), MoSPI (GDP/CPI/IIP), GSTN (GST)
 
-CURRENT_REPO_RATE   = 6.25   # RBI MPC — next review: Jun 2026
-PREVIOUS_REPO_RATE  = 6.50   # Previous MPC decision
+CURRENT_REPO_RATE   = 5.25   # RBI MPC — next review: Jun 2026
+PREVIOUS_REPO_RATE  = 5.5  # Previous MPC decision
 
 CURRENT_GDP         = 6.4    # Q3 FY26 advance estimate — MoSPI
 CURRENT_CPI         = 4.8    # Apr 2026 — MoSPI (update monthly)
@@ -25,7 +38,7 @@ CURRENT_IIP         = 5.2    # Mar 2026 — MoSPI (update monthly)
 CURRENT_GST         = 187000.0  # Apr 2026 collections (₹ Cr) — GSTN
 PREVIOUS_GST        = 183000.0  # Mar 2026 collections (₹ Cr)
 
-MACRO_CONFIG_DATE   = "2026-05-08"  # date these values were last verified
+MACRO_CONFIG_DATE   = "2026-05-20"  # date these values were last verified
 # ─────────────────────────────────────────────────────────────────
 
 
@@ -890,6 +903,72 @@ def run_daily_pipeline(date=None, print_report=True):
             _insight_session.close()
     except Exception as _outer_ie:
         print(f"  ⚠ DailyInsight import/store skipped: {_outer_ie}")
+
+    # ── Store SectorPerformance to DB ──────────────────────────────
+    try:
+        from database import get_session, SectorPerformance as _SectorPerf
+        _sp_session = get_session()
+        try:
+            _sp_run_date_obj = (
+                datetime.strptime(run_date, "%Y-%m-%d").date()
+                if isinstance(run_date, str) else run_date
+            )
+            # Upsert: delete today's records first to prevent duplicates
+            _sp_session.query(_SectorPerf).filter(
+                _SectorPerf.date == _sp_run_date_obj
+            ).delete(synchronize_session=False)
+
+            _sp_records = []
+            _regime_label = regime.get("overall_regime", "UNKNOWN")
+
+            for _sec_name, _sec_data in moderated.get("moderated_sectors", {}).items():
+                _sector_ret   = float(_sec_data.get("sector_return_pct", 0) or 0)
+                _sector_contr = float(_sec_data.get("sector_contribution_pct", 0) or 0)
+                _primary_drv  = str(_sec_data.get("primary_macro_driver", "") or "")
+                _alignment    = str(_sec_data.get("macro_alignment", "") or "")
+
+                _subsectors = _sec_data.get("subsectors", {})
+                if _subsectors:
+                    for _sub_name, _sub_data in _subsectors.items():
+                        _sp_records.append(_SectorPerf(
+                            date                       = _sp_run_date_obj,
+                            sector                     = _sec_name,
+                            subsector                  = _sub_name,
+                            sector_return_pct          = _sector_ret,
+                            sector_contribution_pct    = _sector_contr,
+                            subsector_return_pct       = float(_sub_data.get("subsector_weighted_return_pct", 0) or 0),
+                            subsector_contribution_pct = float(_sub_data.get("subsector_contribution_to_index_pct", 0) or 0),
+                            top_company                = str(_sub_data.get("top_contributor", "") or ""),
+                            primary_macro_driver       = _primary_drv,
+                            macro_alignment            = _alignment,
+                            regime_label               = _regime_label,
+                        ))
+                else:
+                    # No subsectors — store a sector-level row
+                    _sp_records.append(_SectorPerf(
+                        date                       = _sp_run_date_obj,
+                        sector                     = _sec_name,
+                        subsector                  = "",
+                        sector_return_pct          = _sector_ret,
+                        sector_contribution_pct    = _sector_contr,
+                        subsector_return_pct       = _sector_ret,
+                        subsector_contribution_pct = _sector_contr,
+                        top_company                = "",
+                        primary_macro_driver       = _primary_drv,
+                        macro_alignment            = _alignment,
+                        regime_label               = _regime_label,
+                    ))
+
+            _sp_session.add_all(_sp_records)
+            _sp_session.commit()
+            print(f"  ✓ SectorPerformance stored — {len(_sp_records)} records for {run_date}")
+        except Exception as _spe:
+            _sp_session.rollback()
+            print(f"  ⚠ SectorPerformance store failed: {_spe}")
+        finally:
+            _sp_session.close()
+    except Exception as _outer_spe:
+        print(f"  ⚠ SectorPerformance import/store skipped: {_outer_spe}")
 
     elapsed = (datetime.now() - start_time).seconds
     print(f"\n✓ Pipeline complete in {elapsed}s  |  "

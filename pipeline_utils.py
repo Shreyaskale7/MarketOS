@@ -15,10 +15,23 @@
 #   - duplicate-close detection built in (returns None on stale intraday data)
 
 from __future__ import annotations
+import sys
 from datetime import date, datetime, timedelta
 from typing import Optional, Tuple
 import warnings
 warnings.filterwarnings("ignore")
+
+# Ensure UTF-8 output on standard streams (especially on Windows)
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr.encoding != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 # ─────────────────────────────────────────────────────────────────
 # PART 1 — SINGLE PIPELINE DATE
@@ -100,15 +113,15 @@ def get_nifty_return_from_db(
         session.close()
 
     if not rows:
-        print("  [pipeline_utils] ⚠ No MacroData rows found")
+        print("  [pipeline_utils] [WARNING] No MacroData rows found")
         return None, False, 0.0, 0.0
 
     # Filter to rows with valid close prices
     valid_rows = [r for r in rows if (r.nifty_close or 0.0) > 0]
 
     if len(valid_rows) < 2:
-        print(f"  [pipeline_utils] ⚠ Insufficient valid NIFTY closes "
-              f"(need ≥2, found {len(valid_rows)})")
+        print(f"  [pipeline_utils] [WARNING] Insufficient valid NIFTY closes "
+              f"(need >=2, found {len(valid_rows)})")
         level = float(valid_rows[0].nifty_close) if valid_rows else 0.0
         return None, False, level, 0.0
 
@@ -123,21 +136,21 @@ def get_nifty_return_from_db(
 
     # ── Duplicate / stale detection ──────────────────────────────
     if abs(today_close - prev_close) < 0.01:
-        print(f"  [pipeline_utils] ⚠ Duplicate NIFTY values detected: "
+        print(f"  [pipeline_utils] [WARNING] Duplicate NIFTY values detected: "
               f"{today_date}={today_close:.2f} == {prev_date}={prev_close:.2f}")
-        print(f"  [pipeline_utils] ⚠ Intraday or stale data — returning None")
+        print(f"  [pipeline_utils] [WARNING] Intraday or stale data — returning None")
         return None, False, today_close, 0.0
 
     # ── Compute return ────────────────────────────────────────────
     nifty_ret_pct = ((today_close / prev_close) - 1.0) * 100.0
     nifty_points  = today_close - prev_close
 
-    print(f"  [pipeline_utils] NIFTY {prev_date}={prev_close:,.2f} → "
+    print(f"  [pipeline_utils] NIFTY {prev_date}={prev_close:,.2f} -> "
           f"{today_date}={today_close:,.2f} | return={nifty_ret_pct:+.4f}%")
 
     # ── Part 8: Plausibility guard ────────────────────────────────
     if abs(nifty_ret_pct) >= 5.0:
-        print(f"  [pipeline_utils] ⚠ NIFTY return {nifty_ret_pct:+.2f}% ≥ 5% — "
+        print(f"  [pipeline_utils] [WARNING] NIFTY return {nifty_ret_pct:+.2f}% >= 5% — "
               f"likely data error. Marking is_valid=False.")
         return nifty_ret_pct, False, today_close, nifty_points
 
@@ -201,7 +214,7 @@ def log_pipeline_state(context: str = "") -> dict:
     print(f"    Date        : {pipeline_date}")
     print(f"    NIFTY level : {nifty_level:,.2f}")
     print(f"    NIFTY return: {nifty_ret:+.4f}%" if nifty_ret is not None else "    NIFTY return: None")
-    print(f"    is_valid    : {'✓' if is_valid else '✗'}")
+    print(f"    is_valid    : {'YES' if is_valid else 'NO'}")
 
     return state
 

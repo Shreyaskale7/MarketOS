@@ -56,8 +56,10 @@ MACRO_ALIGNMENT_SCALE = {
 
 def _load_sector_returns(lookback_days: int = LOOKBACK_LONG) -> pd.DataFrame:
     """Returns a date × subsector DataFrame of weighted daily returns."""
-    from data_loader import get_data_status
-    since   = get_data_status()["pipeline_date"] - timedelta(days=lookback_days + 10)
+    from pipeline_utils import get_pipeline_date
+    pipeline_dt = get_pipeline_date()
+    since   = pipeline_dt - timedelta(days=lookback_days + 10)
+
     session = get_session()
     try:
         rows = session.query(DailyPrice).filter(

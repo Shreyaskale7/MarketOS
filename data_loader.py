@@ -8,6 +8,19 @@
 #   6. Market closed fallback logs clearly: "Using previous trading day data: X"
 #   7. get_data_status() helper — ALL modules call this to know what date is live
 
+import sys
+# Ensure UTF-8 output on standard streams (especially on Windows)
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr.encoding != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import yfinance as yf
 import pandas as pd
 import numpy as np

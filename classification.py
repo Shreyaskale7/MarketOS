@@ -569,7 +569,7 @@ def get_sector_summary():
         print(f"  Subsectors: {len(data['subsectors'])}")
         print(f"  Companies: {companies_in_sector}")
         for sub_name, sub_data in data["subsectors"].items():
-            print(f"    → {sub_name}: {len(sub_data['companies'])} companies")
+            print(f"    -> {sub_name}: {len(sub_data['companies'])} companies")
         print()
     print(f"TOTAL: {len(MARKET_CLASSIFICATION)} sectors, {total_companies} companies\n")
 

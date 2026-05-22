@@ -22,6 +22,18 @@
 import os
 import sys
 import json
+
+# Ensure UTF-8 output on standard streams (especially on Windows)
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr.encoding != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 import threading
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -111,6 +123,11 @@ def pipeline_status():
             "pipeline_date":    str(pipeline_date),
             "is_trading_day":   mkt.get("is_trading_day", False),
             "engine_mode":      mkt.get("engine_mode", "UNKNOWN"),
+            "session_state":    mkt.get("session_state", "UNKNOWN"),
+            "last_trading_day": str(mkt.get("last_trading_day", "")),
+            "next_trading_day": str(mkt.get("next_trading_day", "")),
+            "data_quality":     mkt.get("data_quality", "UNKNOWN"),
+            "close_reason":     mkt.get("close_reason", ""),
             "nifty": {
                 "level":        nifty_level,
                 "return_pct":   nifty_ret,
@@ -128,6 +145,11 @@ def pipeline_status():
             "pipeline_date":    str(date.today() - timedelta(days=1)),
             "is_trading_day":   False,
             "engine_mode":      "OFFLINE",
+            "session_state":    "OFFLINE",
+            "last_trading_day": "",
+            "next_trading_day": "",
+            "data_quality":     "OFFLINE",
+            "close_reason":     "",
             "nifty": {"level": 0, "return_pct": None, "points": 0, "is_valid": False},
             "last_run_date":    None,
             "regime_label":     "UNKNOWN",
@@ -171,13 +193,14 @@ def macro_data():
 @app.route("/api/alpha")
 def alpha_signals():
     try:
-        from macro_engine import fetch_live_macro_data, classify_macro_regime, moderate_sector_scores
+        from macro_engine import fetch_live_macro_data, classify_macro_regime
         from alpha_engine import compute_alpha_scores
+        from classification import MARKET_CLASSIFICATION
 
         macro  = fetch_live_macro_data()
         regime = classify_macro_regime(macro)
 
-        # Build a minimal moderated_output for alpha engine
+        # Build moderated_output from SectorPerformance DB rows
         from database import get_session, SectorPerformance
         from pipeline_utils import get_pipeline_date
         pd_date = get_pipeline_date()
@@ -189,10 +212,33 @@ def alpha_signals():
         finally:
             session.close()
 
+        # Populate moderated_sectors from DB rows so alpha engine gets macro alignment
+        moderated_sectors = {}
+        for r in rows:
+            sec = r.sector
+            if sec not in moderated_sectors:
+                align = r.macro_alignment or "NEUTRAL"
+                # Map alignment string to a numeric macro_score
+                _align_map = {"MACRO_ALIGNED": 1.0, "NEUTRAL": 0.65, "MACRO_DIVERGENT": 0.4}
+                moderated_sectors[sec] = {
+                    "macro_alignment": align,
+                    "macro_score": _align_map.get(align, 0.65),
+                    "sector_return": float(r.sector_return_pct or 0),
+                }
+
+        # If DB had no rows, build from classification with neutral defaults
+        if not moderated_sectors:
+            for sec_name in MARKET_CLASSIFICATION:
+                moderated_sectors[sec_name] = {
+                    "macro_alignment": "NEUTRAL",
+                    "macro_score": 0.65,
+                    "sector_return": 0.0,
+                }
+
         moderated_output = {
             "macro_data": macro,
             "macro_regime": regime,
-            "moderated_sectors": {},
+            "moderated_sectors": moderated_sectors,
         }
 
         alpha = compute_alpha_scores(moderated_output, macro, regime)
@@ -206,6 +252,7 @@ def alpha_signals():
 
         return success({"alpha": sorted_alpha, "total_sectors": len(alpha)})
     except Exception as exc:
+        import traceback; traceback.print_exc()
         return error(f"Alpha engine error: {str(exc)}")
 
 
@@ -228,8 +275,50 @@ def portfolio():
         port    = build_portfolio(fc, macro, regime, horizon=horizon)
         risk_p  = apply_risk_rules(port, macro, regime)
 
-        return success({"portfolio": risk_p, "horizon": horizon})
+        # Transform weights dict → positions array for the dashboard
+        weights = risk_p.get("weights", {})
+        positions = []
+        for sub, w in weights.items():
+            positions.append({
+                "subsector":          sub,
+                "sector":             w.get("sector", ""),
+                "weight":             w.get("raw_weight", w.get("adjusted_weight", 0)),
+                "adjusted_weight":    w.get("adjusted_weight", 0),
+                "expected_return_pct": w.get("expected_return", 0),
+                "volatility_pct":     w.get("volatility", 0),
+                "alpha_score":        w.get("alpha_score", 0),
+            })
+        # Sort by adjusted weight descending
+        positions.sort(key=lambda p: p["adjusted_weight"], reverse=True)
+
+        # Compute portfolio-level metrics
+        total_exp = sum(p["adjusted_weight"] for p in positions)
+        exp_ret   = sum(p["adjusted_weight"] * p["expected_return_pct"] for p in positions) if positions else 0
+        port_vol  = sum(p["adjusted_weight"] * p["volatility_pct"] for p in positions) if positions else 0
+        sharpe    = port.get("sharpe_like", 0)
+
+        regime_label = risk_p.get("regime", regime.get("overall_regime", "NEUTRAL") if isinstance(regime, dict) else "NEUTRAL")
+        severity     = risk_p.get("risk_flags", {}).get("severity", "GREEN") if isinstance(risk_p.get("risk_flags"), dict) else "GREEN"
+
+        portfolio_out = {
+            "positions":           positions,
+            "expected_return_pct": round(exp_ret, 2),
+            "expected_return":     round(exp_ret, 2),
+            "portfolio_vol_pct":   round(port_vol, 2),
+            "portfolio_vol":       round(port_vol, 2),
+            "sharpe_like":         round(sharpe, 3),
+            "total_exposure_pct":  round(total_exp, 4),
+            "regime_label":        regime_label,
+            "severity":            severity,
+            "rules_applied":       risk_p.get("rules_applied", risk_p.get("applied_rules", [])),
+            "risk_rules_applied":  risk_p.get("rules_applied", risk_p.get("applied_rules", [])),
+            "cash_pct":            risk_p.get("cash_pct", 0),
+            "horizon":             horizon,
+        }
+
+        return success({"portfolio": portfolio_out, "horizon": horizon})
     except Exception as exc:
+        import traceback; traceback.print_exc()
         return error(f"Portfolio engine error: {str(exc)}")
 
 
@@ -371,18 +460,32 @@ def insights():
         finally:
             session.close()
 
-        out = [{
-            "date":           str(r.date),
-            "what_text":      r.what_text,
-            "why_text":       r.why_text,
-            "implication":    r.implication,
-            "regime_context": r.regime_context,
-            "full_insight":   r.full_insight,
-            "regime_label":   r.regime_label,
-            "regime_score":   r.regime_score,
-            "nifty_return":   r.nifty_return,
-            "top_sector":     r.top_sector,
-        } for r in rows]
+        out = []
+        for r in rows:
+            date_str = str(r.date)
+            forward_insight = ""
+            json_path = os.path.join("outputs", f"marketos_daily_{date_str}.json")
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f_json:
+                        daily_data = json.load(f_json)
+                        forward_insight = daily_data.get("forward_insight", "")
+                except Exception:
+                    pass
+
+            out.append({
+                "date":           date_str,
+                "what_text":      r.what_text,
+                "why_text":       r.why_text,
+                "implication":    r.implication,
+                "regime_context": r.regime_context,
+                "full_insight":   r.full_insight,
+                "forward_insight": forward_insight,
+                "regime_label":   r.regime_label,
+                "regime_score":   r.regime_score,
+                "nifty_return":   r.nifty_return,
+                "top_sector":     r.top_sector,
+            })
 
         return success({"insights": out, "count": len(out)})
     except Exception as exc:
@@ -399,10 +502,18 @@ def sectors():
         from classification import MARKET_CLASSIFICATION
         out = {}
         for sector, data in MARKET_CLASSIFICATION.items():
+            subsectors_data = {}
+            for sub_name, sub_data in data.get("subsectors", {}).items():
+                subsectors_data[sub_name] = {
+                    "subsector_weight_in_sector": sub_data.get("subsector_weight_in_sector", 0),
+                    "macro_sensitivity": sub_data.get("macro_sensitivity", {}),
+                    "companies": sub_data.get("companies", {})
+                }
             out[sector] = {
                 "nifty_weight": data.get("sector_nifty_weight", 0),
                 "macro_drivers": data.get("macro_drivers", []),
                 "subsectors": list(data.get("subsectors", {}).keys()),
+                "subsectors_details": subsectors_data
             }
         return success({"sectors": out})
     except Exception as exc:
@@ -416,8 +527,9 @@ def sectors():
 @app.route("/api/sector-performance")
 def sector_performance():
     try:
-        from database import get_session, SectorPerformance
+        from database import get_session, SectorPerformance, DailyPrice
         from pipeline_utils import get_pipeline_date
+        from classification import MARKET_CLASSIFICATION
         days = int(request.args.get("days", 30))
         pd_date = get_pipeline_date()
         since = pd_date - timedelta(days=days)
@@ -441,8 +553,70 @@ def sector_performance():
             "top_company":     r.top_company,
         } for r in rows]
 
+        # ── FALLBACK: if SectorPerformance has < 5 days of data, compute
+        #    historical sector returns from DailyPrice table for the chart ──
+        unique_dates_in_sp = len(set(r["date"] for r in out))
+        if days > 1 and unique_dates_in_sp < 5:
+            # Build subsector→sector map from classification
+            sub_to_sector = {}
+            for sec_name, sec_data in MARKET_CLASSIFICATION.items():
+                for sub_name in sec_data.get("subsectors", []):
+                    sub_to_sector[sub_name] = sec_name
+
+            session = get_session()
+            try:
+                price_rows = session.query(DailyPrice).filter(
+                    DailyPrice.date >= since,
+                    DailyPrice.daily_return.isnot(None)
+                ).all()
+            finally:
+                session.close()
+
+            if price_rows:
+                # Aggregate: per date+subsector → weighted return
+                from collections import defaultdict
+                day_sub = defaultdict(lambda: {"ret_sum": 0.0, "wt_sum": 0.0})
+                for pr in price_rows:
+                    key = (str(pr.date), pr.subsector)
+                    day_sub[key]["ret_sum"] += float(pr.daily_return or 0) * float(pr.nifty_weight or 0.001)
+                    day_sub[key]["wt_sum"]  += float(pr.nifty_weight or 0.001)
+
+                # Build sector-level aggregation per date
+                day_sector = defaultdict(lambda: {"ret_sum": 0.0, "n": 0})
+                backfill = []
+                existing_keys = set((r["date"], r["subsector"]) for r in out)
+                for (dt, sub), agg in day_sub.items():
+                    if (dt, sub) in existing_keys:
+                        continue
+                    sec = sub_to_sector.get(sub, "Other")
+                    sub_ret = (agg["ret_sum"] / agg["wt_sum"]) if agg["wt_sum"] > 0 else 0
+                    day_sector[(dt, sec)]["ret_sum"] += sub_ret
+                    day_sector[(dt, sec)]["n"] += 1
+                    backfill.append({
+                        "date":            dt,
+                        "sector":          sec,
+                        "subsector":       sub,
+                        "sector_return":   0,  # filled below
+                        "subsector_return": round(sub_ret * 100, 4),
+                        "macro_alignment": "NEUTRAL",
+                        "regime_label":    "—",
+                        "top_company":     None,
+                    })
+
+                # Fill in sector-level avg return
+                for rec in backfill:
+                    key = (rec["date"], rec["sector"])
+                    ds = day_sector.get(key)
+                    if ds and ds["n"] > 0:
+                        rec["sector_return"] = round(ds["ret_sum"] / ds["n"] * 100, 4)
+
+                out.extend(backfill)
+                # Sort by date descending
+                out.sort(key=lambda r: r["date"], reverse=True)
+
         return success({"sector_performance": out, "count": len(out)})
     except Exception as exc:
+        import traceback; traceback.print_exc()
         return error(f"Sector performance error: {str(exc)}")
 
 
@@ -540,9 +714,9 @@ def run_status():
 try:
     from database import ensure_tables_exist
     ensure_tables_exist()
-    print("  ✓ Database tables verified")
+    print("  [OK] Database tables verified")
 except Exception as e:
-    print(f"  ⚠ Database warning: {e}")
+    print(f"  [WARNING] Database warning: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))

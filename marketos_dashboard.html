@@ -1,1530 +1,926 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>MarketOS Terminal</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarketOS — India Market Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-:root {
-  --bg:        #070b12;
-  --surface:   #0a1120;
-  --card:      #0e1928;
-  --card-hi:   #131f30;
-  --border:    #1b2d44;
-  --border-hi: #253d5a;
-  --green:     #00c87a;
-  --green-dim: #009a5e;
-  --green-bg:  rgba(0,200,122,0.08);
-  --red:       #f04060;
-  --red-bg:    rgba(240,64,96,0.08);
-  --amber:     #f5a623;
-  --amber-bg:  rgba(245,166,35,0.08);
-  --blue:      #3b82f6;
-  --blue-bg:   rgba(59,130,246,0.08);
-  --purple:    #8b5cf6;
-  --cyan:      #22d3ee;
-  --text-1:    #d0dae8;
-  --text-2:    #7a90aa;
-  --text-3:    #3d5270;
-  --mono:      'IBM Plex Mono', monospace;
-  --sans:      'DM Sans', sans-serif;
-  --r:         6px;
-  --r-lg:      10px;
+:root{
+  --bg:#0A0C0F;--bg2:#0F1217;--bg3:#151A22;--bg4:#1C2230;
+  --border:#1E2633;--border2:#2A3346;
+  --text:#E8EDF5;--text2:#8B97A8;--text3:#4A5568;
+  --green:#00D4AA;--red:#FF4757;--yellow:#FFB800;--blue:#0099FF;
+  --mono:'Space Mono',monospace;--sans:'DM Sans',sans-serif;
+  --r:6px;--r2:10px;
 }
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 13px; scroll-behavior: smooth; }
-body {
-  background: var(--bg);
-  color: var(--text-1);
-  font-family: var(--sans);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-/* subtle grid overlay */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(0,200,122,0.012) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,200,122,0.012) 1px, transparent 1px);
-  background-size: 48px 48px;
-}
-
-/* ── LAYOUT ── */
-.app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
-
-/* ── SIDEBAR ── */
-.sidebar {
-  width: 212px;
-  flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow-y: auto;
-}
-.sidebar-logo {
-  padding: 20px 18px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.logo-row { display: flex; align-items: center; gap: 10px; }
-.logo-box {
-  width: 30px; height: 30px;
-  background: var(--green);
-  border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--mono); font-size: 11px; font-weight: 600;
-  color: #000; letter-spacing: -0.5px;
-  box-shadow: 0 0 16px rgba(0,200,122,0.35);
-}
-.logo-name { font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
-.logo-ver  { font-size: 10px; color: var(--text-3); font-family: var(--mono); margin-top: 1px; }
-
-.nav { padding: 14px 10px; flex: 1; }
-.nav-group-label {
-  font-size: 9px;
-  font-family: var(--mono);
-  color: var(--text-3);
-  letter-spacing: 1.8px;
-  text-transform: uppercase;
-  padding: 10px 8px 5px;
-}
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-  border-radius: var(--r);
-  cursor: pointer;
-  margin-bottom: 1px;
-  color: var(--text-2);
-  font-size: 12.5px;
-  font-weight: 500;
-  transition: all 0.12s;
-  border: 1px solid transparent;
-  text-decoration: none;
-  user-select: none;
-}
-.nav-item:hover { background: var(--card); color: var(--text-1); }
-.nav-item.active {
-  background: var(--green-bg);
-  color: var(--green);
-  border-color: rgba(0,200,122,0.2);
-}
-.nav-item svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.8; }
-.nav-item.active svg { opacity: 1; }
-
-.sidebar-foot {
-  padding: 14px 16px;
-  border-top: 1px solid var(--border);
-}
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 5px 11px;
-  font-size: 10px;
-  color: var(--text-2);
-  font-family: var(--mono);
-}
-.sdot {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 5px var(--green);
-  animation: pulse 2.5s ease-in-out infinite;
-  flex-shrink: 0;
-}
-@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
-
-/* ── MAIN ── */
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-
-/* ── TOPBAR ── */
-.topbar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 24px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  gap: 16px;
-}
-.topbar-l { display: flex; align-items: center; gap: 16px; }
-.page-title { font-size: 14px; font-weight: 600; color: var(--text-1); }
-.topbar-date {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-3);
-  background: var(--card);
-  padding: 3px 9px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-}
-.topbar-r { display: flex; align-items: center; gap: 10px; }
-
-/* nifty ticker */
-.nifty-blk {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 7px 14px;
-}
-.nifty-lbl { font-size: 9px; font-family: var(--mono); color: var(--text-3); letter-spacing: 0.8px; }
-.nifty-val { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
-.nifty-chg { font-family: var(--mono); font-size: 11px; font-weight: 500; }
-.nifty-divider { width: 1px; height: 28px; background: var(--border); }
-/* mini sparkline canvas */
-#nifty-spark { display: block; }
-
-.regime-badge {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 600;
-  padding: 4px 9px;
-  border-radius: 4px;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-}
-.regime-BULL_RUN, .regime-BULLISH { background:var(--green-bg); color:var(--green); border:1px solid rgba(0,200,122,0.25); }
-.regime-BEAR, .regime-BEARISH { background:var(--red-bg); color:var(--red); border:1px solid rgba(240,64,96,0.2); }
-.regime-NEUTRAL { background:var(--card-hi); color:var(--text-2); border:1px solid var(--border); }
-.regime-RATE_CUT { background:var(--amber-bg); color:var(--amber); border:1px solid rgba(245,166,35,0.25); }
-.regime-RISK_OFF { background:rgba(139,92,246,0.08); color:var(--purple); border:1px solid rgba(139,92,246,0.25); }
-.regime-UNKNOWN  { background:var(--card); color:var(--text-3); border:1px solid var(--border); }
-
-.btn-run {
-  background: var(--green);
-  color: #000;
-  border: none;
-  border-radius: var(--r);
-  padding: 7px 15px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: var(--sans);
-  transition: background 0.15s, opacity 0.15s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.btn-run:hover { background: var(--green-dim); }
-.btn-run:disabled { opacity: 0.45; cursor: not-allowed; }
-
-/* ── PAGE BODY ── */
-.page { padding: 20px 24px; }
-
-/* ── SECTION HEADER ── */
-.sec { margin-bottom: 22px; }
-.sec-hdr {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 13px;
-}
-.sec-title {
-  font-size: 10px;
-  font-family: var(--mono);
-  color: var(--text-3);
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.sec-title::before {
-  content: '';
-  width: 2px; height: 12px;
-  background: var(--green);
-  border-radius: 1px;
-  display: inline-block;
-}
-
-/* ── CARD ── */
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 16px 18px;
-  position: relative;
-  overflow: hidden;
-}
-.card::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,200,122,0.18), transparent);
-}
-
-/* ── GRIDS ── */
-.g6  { display: grid; grid-template-columns: repeat(6,1fr); gap: 10px; }
-.g4  { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
-.g3  { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
-.g2  { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; }
-.g-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 11px; }
-
-/* ── MACRO CARDS ── */
-.mc {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 14px 16px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.15s;
-}
-.mc:hover { border-color: var(--border-hi); }
-.mc-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
-.mc-label {
-  font-size: 9px;
-  font-family: var(--mono);
-  color: var(--text-3);
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-.mc-icon {
-  width: 24px; height: 24px;
-  border-radius: 5px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.mc-icon svg { width: 13px; height: 13px; }
-.mc-val { font-family: var(--mono); font-size: 19px; font-weight: 500; line-height: 1; margin-bottom: 5px; }
-.mc-chg { font-family: var(--mono); font-size: 10px; display: flex; align-items: center; gap: 3px; }
-.mc-bar { height: 2px; background: var(--border); border-radius: 1px; margin-top: 9px; overflow: hidden; }
-.mc-bar-fill { height: 100%; border-radius: 1px; transition: width 0.6s; }
-
-/* ── KPI STRIP ── */
-.kpi-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.kpi-label { font-size: 9px; font-family: var(--mono); color: var(--text-3); letter-spacing: 0.8px; text-transform: uppercase; }
-.kpi-val { font-family: var(--mono); font-size: 22px; font-weight: 600; line-height: 1; }
-.kpi-sub { font-size: 10px; color: var(--text-2); }
-
-/* ── ALPHA TABLE ── */
-.tbl { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
-.tbl thead th {
-  padding: 7px 10px;
-  text-align: left;
-  color: var(--text-3);
-  font-size: 9px;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
-  font-weight: 500;
-}
-.tbl thead th:first-child { padding-left: 12px; }
-.tbl tbody tr { border-bottom: 1px solid rgba(27,45,68,0.5); transition: background 0.1s; }
-.tbl tbody tr:hover { background: var(--card-hi); }
-.tbl tbody tr:last-child { border-bottom: none; }
-.tbl tbody td { padding: 8px 10px; color: var(--text-1); }
-.tbl tbody td:first-child { padding-left: 12px; }
-.rank-badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px;
-  border-radius: 4px;
-  font-size: 9px; font-weight: 600;
-  background: var(--border); color: var(--text-3);
-}
-.rank-badge.gold { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(245,166,35,0.25); }
-.rank-badge.silver { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
-.rank-badge.bronze { background: rgba(205,127,50,0.08); color: #cd7f32; border: 1px solid rgba(205,127,50,0.2); }
-
-.alpha-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; width: 70px; }
-.alpha-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
-
-/* ── TAGS ── */
-.tag {
-  display: inline-block;
-  font-size: 8px; font-family: var(--mono);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.tag-pass   { background: var(--green-bg); color: var(--green); border: 1px solid rgba(0,200,122,0.2); }
-.tag-excl   { background: var(--red-bg);   color: var(--red);   border: 1px solid rgba(240,64,96,0.18); }
-.tag-neutral{ background: var(--border);   color: var(--text-2); }
-.tag-amber  { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(245,166,35,0.22); }
-.tag-blue   { background: var(--blue-bg);  color: var(--blue);  border: 1px solid rgba(59,130,246,0.22); }
-
-/* ── PORTFOLIO ── */
-.port-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(27,45,68,0.5);
-}
-.port-row:last-child { border-bottom: none; }
-.port-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.port-name { flex: 1; font-size: 11.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.port-sub { font-size: 9px; color: var(--text-3); font-family: var(--mono); margin-top: 1px; }
-.port-wt { font-family: var(--mono); font-size: 13px; font-weight: 600; }
-.port-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; width: 60px; margin-top: 3px; }
-.port-bar-fill { height: 100%; border-radius: 2px; }
-
-/* ── FORECAST CARDS ── */
-.fc {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 14px 16px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.15s;
-}
-.fc:hover { border-color: var(--border-hi); }
-.fc-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
-.fc-horizon { font-size: 9px; font-family: var(--mono); color: var(--text-3); letter-spacing: 0.8px; text-transform: uppercase; }
-.fc-returns { display: flex; gap: 0; margin: 11px 0 0; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
-.fc-ret-col { flex: 1; text-align: center; padding: 8px 4px; }
-.fc-ret-col:not(:last-child) { border-right: 1px solid var(--border); }
-.fc-ret-lbl { font-size: 8px; color: var(--text-3); font-family: var(--mono); letter-spacing: 0.6px; margin-bottom: 3px; }
-.fc-ret-val { font-family: var(--mono); font-size: 14px; font-weight: 600; }
-.fc-conf-bar { height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; margin-top: 11px; }
-.fc-conf-fill { height: 100%; border-radius: 1px; background: var(--blue); }
-.fc-meta { margin-top: 8px; font-size: 9px; color: var(--text-3); font-family: var(--mono); display: flex; justify-content: space-between; }
-.fc-catalyst { margin-top: 7px; font-size: 10px; color: var(--text-2); line-height: 1.5; }
-
-/* ── INSIGHT ── */
-.insight {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 18px 20px;
-  border-left: 2px solid var(--green);
-}
-.ins-meta { font-family: var(--mono); font-size: 9px; color: var(--text-3); margin-bottom: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
-.ins-section-title { font-size: 9px; font-family: var(--mono); font-weight: 600; color: var(--amber); letter-spacing: 1px; text-transform: uppercase; margin: 13px 0 5px; }
-.ins-text { font-size: 12.5px; color: var(--text-2); line-height: 1.75; }
-
-/* ── SKELETON ── */
-.skel {
-  background: linear-gradient(90deg, var(--card) 25%, var(--card-hi) 50%, var(--card) 75%);
-  background-size: 200% 100%;
-  animation: shim 1.6s infinite;
-  border-radius: var(--r);
-}
-@keyframes shim { 0%{background-position:200% 0}100%{background-position:-200% 0} }
-
-/* ── UTILS ── */
-.g  { color: var(--green)!important; }
-.r  { color: var(--red)!important; }
-.a  { color: var(--amber)!important; }
-.b  { color: var(--blue)!important; }
-.m  { color: var(--text-2)!important; }
-.d  { color: var(--text-3)!important; }
-.mono { font-family: var(--mono)!important; }
-
-.donut-wrap { position: relative; flex-shrink: 0; }
-.donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
-.dc-val { font-family: var(--mono); font-size: 16px; font-weight: 600; }
-.dc-sub { font-family: var(--mono); font-size: 8px; color: var(--text-3); letter-spacing: 0.5px; margin-top: 2px; }
-
-.spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 0.65s linear infinite; }
-@keyframes spin { to{transform:rotate(360deg)} }
-
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 20px; gap: 8px; }
-.empty-state svg { width: 28px; height: 28px; color: var(--text-3); opacity: 0.5; }
-.empty-state p { font-size: 11px; font-family: var(--mono); color: var(--text-3); text-align: center; }
-
-.tabs { display: flex; gap: 3px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px; }
-.tab-btn { padding: 5px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 11px; font-family: var(--mono); font-weight: 500; color: var(--text-3); background: transparent; transition: all 0.12s; }
-.tab-btn.active { background: var(--card-hi); color: var(--text-1); border: 1px solid var(--border); }
-.tab-btn:hover { color: var(--text-1); }
-
-.toast-container { position: fixed; bottom: 18px; right: 18px; z-index: 999; display: flex; flex-direction: column; gap: 7px; }
-.toast { background: var(--card-hi); border: 1px solid var(--border); border-radius: var(--r); padding: 9px 14px; font-size: 11px; font-family: var(--mono); color: var(--text-1); box-shadow: 0 8px 24px rgba(0,0,0,0.4); animation: slide-in 0.2s ease; display: flex; align-items: center; gap: 8px; }
-@keyframes slide-in { from{transform:translateX(16px);opacity:0} to{transform:translateX(0);opacity:1} }
-
-/* risk panel row */
-.risk-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(27,45,68,0.5); }
-.risk-row:last-child { border-bottom: none; }
-.risk-label { font-size: 11px; color: var(--text-2); }
-
-/* scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-/* ── section visibility ── */
-.section-panel { display: none; }
-.section-panel.active { display: block; }
-
-/* ── Responsive ── */
-@media(max-width:1300px) { .g6 { grid-template-columns:repeat(3,1fr); } }
-@media(max-width:1100px) { .g6 { grid-template-columns:repeat(2,1fr); } .g4 { grid-template-columns:repeat(2,1fr); } }
-@media(max-width:900px) { .sidebar { display: none; } .g6 { grid-template-columns:repeat(2,1fr); } .g3 { grid-template-columns:1fr; } }
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.5;overflow-x:hidden}
+.topbar{position:sticky;top:0;z-index:100;background:rgba(10,12,15,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;height:52px;gap:14px}
+.logo{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--green);letter-spacing:.05em;flex-shrink:0}
+.logo span{color:var(--text3)}
+.nifty-block{display:flex;align-items:baseline;gap:8px;flex-shrink:0}
+.nifty-lvl{font-family:var(--mono);font-size:19px;font-weight:700}
+.chg{font-family:var(--mono);font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px}
+.chg.up{background:rgba(0,212,170,.12);color:var(--green)}
+.chg.dn{background:rgba(255,71,87,.12);color:var(--red)}
+.chg.fl{background:rgba(139,151,168,.1);color:var(--text2)}
+.pills{display:flex;gap:6px;flex:1;overflow-x:auto;scrollbar-width:none}
+.pills::-webkit-scrollbar{display:none}
+.pill{display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;white-space:nowrap;flex-shrink:0;font-size:11px}
+.pill-l{color:var(--text3)}.pill-v{font-family:var(--mono);color:var(--text)}
+.regime{padding:4px 12px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;flex-shrink:0;border:1px solid var(--border)}
+.regime.bull{background:rgba(0,212,170,.12);color:var(--green);border-color:rgba(0,212,170,.3)}
+.regime.bear{background:rgba(255,71,87,.12);color:var(--red);border-color:rgba(255,71,87,.3)}
+.regime.neut{background:rgba(139,151,168,.08);color:var(--text2)}
+.run-btn{background:var(--green);color:#0A0C0F;border:none;border-radius:var(--r);padding:6px 14px;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;margin-left:auto;flex-shrink:0}
+.run-btn:hover{opacity:.85}.run-btn:disabled{opacity:.4;cursor:default}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0}
+.dot.off{background:var(--text3);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.layout{display:flex;height:calc(100vh - 52px)}
+.sidebar{width:48px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px}
+.nav{width:36px;height:36px;border-radius:var(--r);border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text3);transition:all .15s}
+.nav:hover{background:var(--bg3);color:var(--text2)}.nav.active{background:rgba(0,212,170,.1);color:var(--green)}
+.nav svg{width:15px;height:15px}
+.divider{width:24px;height:1px;background:var(--border);margin:4px 0}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;padding:18px}
+.sec{display:none}.sec.on{display:block}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:14px}
+.card-title{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card-title::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--green);flex-shrink:0}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.span2{grid-column:span 2}
+.scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:14px}
+.sl{font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.sv{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1}
+.sv.up{color:var(--green)}.sv.dn{color:var(--red)}
+.ss{font-size:11px;color:var(--text2);margin-top:4px}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;text-align:left;padding:6px 10px;border-bottom:1px solid var(--border2)}
+.tbl th.r,.tbl td.r{text-align:right}
+.tbl td{padding:8px 10px;border-bottom:1px solid rgba(30,38,51,.5);font-size:12px;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}.tbl tr:hover td{background:rgba(255,255,255,.015)}
+.badge{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:3px;font-weight:700}
+.badge.g{background:rgba(0,212,170,.1);color:var(--green)}.badge.r{background:rgba(255,71,87,.1);color:var(--red)}.badge.y{background:rgba(255,184,0,.1);color:var(--yellow)}
+.bar-track{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px}.bar-fill.g{background:var(--green)}.bar-fill.r{background:var(--red)}.bar-fill.b{background:var(--blue)}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{padding:5px 14px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.tab.on{background:var(--green);color:#0A0C0F;border-color:var(--green)}.tab:hover:not(.on){border-color:var(--border2);color:var(--text)}
+.mc{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:14px}
+.mc-name{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.mc-val{font-family:var(--mono);font-size:18px;font-weight:700}
+.mc-chg{font-size:11px;font-family:var(--mono);margin-top:3px}
+.mc-chg.up{color:var(--green)}.mc-chg.dn{color:var(--red)}
+.mc-tag{display:inline-block;margin-top:6px;font-size:9px;font-family:var(--mono);font-weight:700;padding:2px 6px;border-radius:3px;background:var(--bg4);color:var(--text2);letter-spacing:.06em}
+.sig-track{margin-top:8px;height:3px;background:var(--bg4);border-radius:2px}
+.sig-fill{height:100%;border-radius:2px}.sig-fill.pos{background:var(--green)}.sig-fill.neg{background:var(--red)}.sig-fill.neu{background:var(--text3)}
+.ch{position:relative;height:200px}.ch-lg{position:relative;height:260px}
+.fc-row{display:grid;grid-template-columns:26px 1fr 72px 110px 52px;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px}
+.fc-row:last-child{border-bottom:none}.fc-row:hover{background:rgba(255,255,255,.015)}
+.fc-hdr{font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border2)!important}
+.fc-rank{font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center}
+.fc-base{font-family:var(--mono);font-size:13px;font-weight:700;text-align:right}
+.fc-base.up{color:var(--green)}.fc-base.dn{color:var(--red)}
+.pr{display:grid;grid-template-columns:1fr 60px 60px 72px 60px 60px;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px}
+.pr:last-child{border-bottom:none}.pr:hover{background:rgba(255,255,255,.015)}
+.pr-hdr{font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border2)!important}
+.ar{display:grid;grid-template-columns:22px 1fr 52px 52px 52px 52px 52px 52px;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px}
+.ar:last-child{border-bottom:none}.ar:hover{background:rgba(255,255,255,.015)}
+.ar-hdr{font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border2)!important}
+.mono{font-family:var(--mono);color:var(--text2);text-align:right}
+.bt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.bm{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:14px}
+.bm-l{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.bm-v{font-family:var(--mono);font-size:20px;font-weight:700}
+.bm-v.g{color:var(--green)}.bm-v.r{color:var(--red)}.bm-v.y{color:var(--yellow)}.bm-v.n{color:var(--text)}
+.ins-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:18px;margin-bottom:12px}
+.ins-meta{display:flex;gap:10px;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.ins-date{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.ins-body{font-size:13px;color:var(--text2);line-height:1.75}
+.ins-body strong{color:var(--text);font-weight:600}
+.perf-row{display:grid;grid-template-columns:1fr 60px 60px 60px 36px;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px}
+.perf-row:last-child{border-bottom:none}
+.grade{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;font-family:var(--mono);font-size:11px;font-weight:700}
+.grade.A{background:rgba(0,212,170,.15);color:var(--green)}.grade.B{background:rgba(0,153,255,.12);color:var(--blue)}.grade.C{background:rgba(255,184,0,.12);color:var(--yellow)}.grade.D{background:rgba(255,71,87,.12);color:var(--red)}
+.sector-node{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+.sector-header{padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;transition:background .2s}
+.sector-header:hover{background:var(--bg4)}
+.sector-title-wrapper{display:flex;align-items:center;gap:8px}
+.sector-toggle-icon{font-family:var(--mono);font-size:10px;color:var(--text3);transition:transform .2s;display:inline-block}
+.sector-node.open > .sector-header > .sector-title-wrapper > .sector-toggle-icon{transform:rotate(90deg);color:var(--green)}
+.sector-content{display:none;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg2)}
+.sector-node.open > .sector-content{display:block}
+.subsector-node{margin-top:6px;border-radius:var(--r);border:1px solid rgba(255,255,255,.02);background:rgba(255,255,255,.005)}
+.subsector-header{padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-radius:var(--r);transition:all .15s}
+.subsector-header:hover{background:rgba(255,255,255,.02)}
+.subsector-toggle-icon{font-size:8px;color:var(--text3);transition:transform .2s}
+.subsector-node.open > .subsector-header > .subsector-toggle-icon{transform:rotate(180deg);color:var(--yellow)}
+.subsector-content{display:none;padding:10px 12px;background:rgba(0,0,0,.15);border-top:1px dashed var(--border)}
+.subsector-node.open > .subsector-content{display:block}
+.company-table{width:100%;border-collapse:collapse}
+.company-table th{padding:4px 6px;font-size:9px;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left}
+.company-table td{padding:6px;font-size:11px;color:var(--text2);border-bottom:1px solid rgba(255,255,255,.01)}
+.company-table tr:last-child td{border-bottom:none}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 </style>
 </head>
 <body>
-<div class="app">
-
-<!-- SIDEBAR -->
-<aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="logo-row">
-      <div class="logo-box">MO</div>
-      <div>
-        <div class="logo-name">MarketOS</div>
-        <div class="logo-ver">TERMINAL v2.1</div>
-      </div>
-    </div>
+<header class="topbar">
+  <div class="logo">MARKET<span>OS</span></div>
+  <div class="nifty-block">
+    <div class="nifty-lvl" id="tb-lvl">—</div>
+    <div class="chg fl" id="tb-chg">—</div>
   </div>
-  <nav class="nav">
-    <div class="nav-group-label">Overview</div>
-    <a class="nav-item active" onclick="showSection('overview')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Dashboard
-    </a>
-    <a class="nav-item" onclick="showSection('macro')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-      Macro Regime
-    </a>
-    <a class="nav-item" onclick="showSection('alpha')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
-      Alpha Signals
-    </a>
-    <div class="nav-group-label">Strategy</div>
-    <a class="nav-item" onclick="showSection('portfolio')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/></svg>
-      Portfolio
-    </a>
-    <a class="nav-item" onclick="showSection('forecasts')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><polyline points="18,9 13,14 9,10 5,14"/></svg>
-      Forecasts
-    </a>
-    <a class="nav-item" onclick="showSection('backtest')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 101.48-4.14L1 10"/></svg>
-      Backtest
-    </a>
-    <div class="nav-group-label">Analytics</div>
-    <a class="nav-item" onclick="showSection('performance')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-      Performance
-    </a>
-    <a class="nav-item" onclick="showSection('insights')" href="#">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-      AI Insights
-    </a>
+  <div class="pills">
+    <div class="pill"><span class="pill-l">VIX</span><span class="pill-v" id="tb-vix">—</span></div>
+    <div class="pill"><span class="pill-l">USD/INR</span><span class="pill-v" id="tb-usdinr">—</span></div>
+    <div class="pill"><span class="pill-l">CRUDE</span><span class="pill-v" id="tb-crude">—</span></div>
+    <div class="pill"><span class="pill-l">FII</span><span class="pill-v" id="tb-fii">—</span></div>
+    <div class="pill"><span class="pill-l">DATE</span><span class="pill-v" id="tb-date">—</span></div>
+  </div>
+  <div class="regime neut" id="tb-regime">—</div>
+  <div class="dot off" id="tb-dot"></div>
+  <button class="run-btn" id="run-btn" onclick="runPipeline()">▶ RUN DAILY</button>
+</header>
+
+<div class="layout">
+  <nav class="sidebar">
+    <button class="nav active" data-s="overview"     onclick="go('overview')"     title="Overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    </button>
+    <button class="nav" data-s="macro"       onclick="go('macro')"       title="Macro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </button>
+    <button class="nav" data-s="sectors"     onclick="go('sectors')"     title="Sectors">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    </button>
+    <button class="nav" data-s="alpha"       onclick="go('alpha')"       title="Alpha">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    </button>
+    <button class="nav" data-s="forecasts"   onclick="go('forecasts')"   title="Forecasts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+    </button>
+    <button class="nav" data-s="portfolio"   onclick="go('portfolio')"   title="Portfolio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </button>
+    <div class="divider"></div>
+    <button class="nav" data-s="backtest"    onclick="go('backtest')"    title="Backtest">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+    <button class="nav" data-s="performance" onclick="go('performance')" title="Accuracy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    </button>
+    <button class="nav" data-s="insights"    onclick="go('insights')"    title="Insights">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
   </nav>
-  <div class="sidebar-foot">
-    <div class="status-pill">
-      <div class="sdot" id="sdot"></div>
-      <span id="api-status-text">Connecting…</span>
-    </div>
-  </div>
-</aside>
 
-<!-- MAIN -->
-<main class="main">
-  <header class="topbar">
-    <div class="topbar-l">
-      <div class="page-title" id="page-title">Dashboard</div>
-      <div class="topbar-date" id="topbar-date">—</div>
-    </div>
-    <div class="topbar-r">
-      <div class="nifty-blk">
-        <div>
-          <div class="nifty-lbl">NIFTY 50</div>
-          <div class="nifty-val" id="nifty-val">—</div>
-        </div>
-        <div class="nifty-divider"></div>
-        <div>
-          <div class="nifty-chg" id="nifty-chg">—</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text-3)" id="nifty-pts">—</div>
-        </div>
-        <canvas id="nifty-spark" width="80" height="36"></canvas>
-      </div>
-      <div class="regime-badge regime-UNKNOWN" id="regime-badge">—</div>
-      <button class="btn-run" id="run-btn" onclick="triggerPipeline()">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-        Run Pipeline
-      </button>
-    </div>
-  </header>
-
-  <div class="page">
-
+  <main class="main">
     <!-- OVERVIEW -->
-    <div id="section-overview" class="section-panel active">
-
-      <!-- KPI strip -->
-      <div class="sec">
-        <div class="g4" id="kpi-strip">
-          <div class="kpi-card"><div class="kpi-label">Direction Accuracy</div><div class="kpi-val" id="kpi-dir">—</div><div class="kpi-sub">Forecast vs Actual</div></div>
-          <div class="kpi-card"><div class="kpi-label">Sharpe (Benchmark)</div><div class="kpi-val" id="kpi-sharpe">—</div><div class="kpi-sub">NIFTY 1-Year</div></div>
-          <div class="kpi-card"><div class="kpi-label">NIFTY Annualised</div><div class="kpi-val" id="kpi-nann">—</div><div class="kpi-sub">1-Year Window</div></div>
-          <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-val" id="kpi-dd">—</div><div class="kpi-sub">Peak-to-Trough</div></div>
+    <div id="sec-overview" class="sec on">
+      <div class="g4" style="margin-bottom:14px">
+        <div class="scard"><div class="sl">NIFTY 50</div><div class="sv" id="ov-nifty">—</div><div class="ss" id="ov-nifty-s">—</div></div>
+        <div class="scard"><div class="sl">Regime</div><div class="sv" id="ov-regime">—</div><div class="ss" id="ov-regime-s">—</div></div>
+        <div class="scard"><div class="sl">India VIX</div><div class="sv" id="ov-vix">—</div><div class="ss" id="ov-vix-s">—</div></div>
+        <div class="scard"><div class="sl">Pipeline Date</div><div class="sv" id="ov-date" style="font-size:14px">—</div><div class="ss" id="ov-date-s">—</div></div>
+      </div>
+      <div class="g2">
+        <div class="card"><div class="card-title">NIFTY 30-Day Trend</div><div class="ch"><canvas id="ch-nifty"></canvas></div></div>
+        <div class="card"><div class="card-title">Top Opportunities — 3M</div><div id="ov-opps"><div class="empty">Loading...</div></div></div>
+      </div>
+      <div class="g2" style="margin-top:14px">
+        <div class="card"><div class="card-title">Sector Attribution Today</div><div id="ov-sectors"><div class="empty">Loading...</div></div></div>
+        <div class="card"><div class="card-title">Latest AI Insight</div><div id="ov-insight" style="font-size:12px;color:var(--text2);line-height:1.7">Loading...</div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">Market Status & Pipeline Info</div>
+        <div class="g4" id="ov-status-grid">
+          <div class="scard"><div class="sl">Session State</div><div class="sv" id="ov-session" style="font-size:14px">—</div><div class="ss" id="ov-session-s">—</div></div>
+          <div class="scard"><div class="sl">Data Quality</div><div class="sv" id="ov-quality" style="font-size:14px">—</div><div class="ss" id="ov-quality-s">—</div></div>
+          <div class="scard"><div class="sl">Next Trade Date</div><div class="sv" id="ov-next-trade" style="font-size:13px">—</div><div class="ss" id="ov-next-trade-s">last trade</div></div>
+          <div class="scard"><div class="sl">NIFTY Validation</div><div class="sv" id="ov-nifty-valid" style="font-size:14px">—</div><div class="ss" id="ov-nifty-valid-s">—</div></div>
         </div>
       </div>
+    </div>
 
-      <!-- Macro cards -->
-      <div class="sec">
-        <div class="sec-hdr">
-          <div class="sec-title">Macro Indicators</div>
-          <div id="macro-updated" style="font-size:9px;color:var(--text-3);font-family:var(--mono)">—</div>
-        </div>
-        <div class="g6" id="macro-cards">
-          <div class="mc"><div class="skel" style="height:62px"></div></div>
-          <div class="mc"><div class="skel" style="height:62px"></div></div>
-          <div class="mc"><div class="skel" style="height:62px"></div></div>
-          <div class="mc"><div class="skel" style="height:62px"></div></div>
-          <div class="mc"><div class="skel" style="height:62px"></div></div>
-          <div class="mc"><div class="skel" style="height:62px"></div></div>
+    <!-- MACRO -->
+    <div id="sec-macro" class="sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div><div style="font-family:var(--mono);font-size:13px;font-weight:700">Macro Intelligence</div><div style="font-size:11px;color:var(--text3)" id="macro-sub">—</div></div>
+        <div style="display:flex;gap:6px" id="macro-sub-regimes"></div>
+        <div class="regime neut" id="macro-regime">—</div>
+      </div>
+      <div class="g5" id="macro-signals" style="margin-bottom:14px"></div>
+      <div class="g2" style="margin-bottom:14px">
+        <div class="card"><div class="card-title">NIFTY + FII Flows 30D</div><div class="ch-lg"><canvas id="ch-nifty-fii"></canvas></div></div>
+        <div class="card"><div class="card-title">VIX + Crude 30D</div><div class="ch-lg"><canvas id="ch-vix-crude"></canvas></div></div>
+      </div>
+      <div class="card"><div class="card-title">Signal Breakdown</div><div id="regime-breakdown"><div class="empty">Loading...</div></div></div>
+    </div>
+
+    <!-- SECTORS -->
+    <div id="sec-sectors" class="sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Sector Attribution</div>
+        <div style="font-size:11px;color:var(--text3)" id="sector-conf">—</div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <table class="tbl"><thead><tr>
+          <th>Sector</th><th class="r">Weight</th><th class="r">Return</th><th class="r">Contribution</th><th>Bar</th><th>Alignment</th><th>Driver</th><th class="r">Dir</th>
+        </tr></thead><tbody id="sector-tbody"><tr><td colspan="8" class="empty">Loading...</td></tr></tbody></table>
+      </div>
+      <div class="card" style="margin-bottom:14px"><div class="card-title">30-Day Sector Returns History</div><div class="ch-lg"><canvas id="ch-sector-hist"></canvas></div></div>
+      <div class="card"><div class="card-title">Market Classification & Drivers</div><div id="sector-class"><div class="empty">Loading...</div></div></div>
+    </div>
+
+    <!-- ALPHA -->
+    <div id="sec-alpha" class="sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Alpha Signal Engine v3</div>
+        <div style="font-size:11px;color:var(--text3)" id="alpha-sum">—</div>
+      </div>
+      <div class="card">
+        <div class="ar ar-hdr"><span>#</span><span>Subsector</span><span style="text-align:right">Alpha</span><span style="text-align:right">Mom</span><span style="text-align:right">MRev</span><span style="text-align:right">Vol</span><span style="text-align:right">Macro</span><span style="text-align:right">Status</span></div>
+        <div id="alpha-rows"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+
+    <!-- FORECASTS -->
+    <div id="sec-forecasts" class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">ML Sector Forecasts</div>
+      <div class="tabs">
+        <button class="tab on" onclick="setFcTab('1M',this)">1 Month</button>
+        <button class="tab" onclick="setFcTab('3M',this)">3 Month</button>
+        <button class="tab" onclick="setFcTab('6M',this)">6 Month</button>
+        <button class="tab" onclick="setFcTab('12M',this)">12 Month</button>
+      </div>
+      <div class="card">
+        <div class="fc-row fc-hdr"><span>#</span><span>Subsector</span><span style="text-align:right">Base</span><span style="text-align:right">Bull / Bear / Conf</span><span style="text-align:right">Score</span></div>
+        <div id="fc-rows"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO -->
+    <div id="sec-portfolio" class="sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Portfolio Construction</div>
+        <div class="tabs" style="margin-bottom:0">
+          <button class="tab on" onclick="setPortTab('1M',this)">1M</button>
+          <button class="tab" onclick="setPortTab('3M',this)">3M</button>
+          <button class="tab" onclick="setPortTab('6M',this)">6M</button>
+          <button class="tab" onclick="setPortTab('12M',this)">12M</button>
         </div>
       </div>
+      <div class="g2" style="margin-bottom:14px">
+        <div class="card"><div class="card-title">Allocation Donut</div><div class="ch"><canvas id="ch-donut"></canvas></div></div>
+        <div class="card"><div class="card-title">Portfolio Metrics</div><div id="port-metrics"><div class="empty">Loading...</div></div></div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="pr pr-hdr"><span>Subsector</span><span style="text-align:right">Raw Wt</span><span style="text-align:right">Adj Wt</span><span style="text-align:right">Exp Ret</span><span style="text-align:right">Vol</span><span style="text-align:right">Alpha</span></div>
+        <div id="port-rows"><div class="empty">Loading...</div></div>
+      </div>
+      <div class="card"><div class="card-title">Risk Rules Applied</div><div id="risk-rules"><div class="empty">—</div></div></div>
+    </div>
 
-      <!-- Alpha + Portfolio -->
-      <div class="sec" style="display:grid;grid-template-columns:3fr 2fr;gap:14px">
+    <!-- BACKTEST -->
+    <div id="sec-backtest" class="sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div><div style="font-family:var(--mono);font-size:13px;font-weight:700">Walk-Forward Backtest</div><div style="font-size:11px;color:var(--text3)" id="bt-sub">—</div></div>
+        <div class="tabs" style="margin-bottom:0">
+          <button class="tab on" onclick="loadBt(3,this)">3Y</button>
+          <button class="tab" onclick="loadBt(5,this)">5Y</button>
+        </div>
+      </div>
+      <div class="bt-grid">
+        <div class="bm"><div class="bm-l">Portfolio Ann. Return</div><div class="bm-v n" id="bt-ret">—</div></div>
+        <div class="bm"><div class="bm-l">NIFTY Ann. Return</div><div class="bm-v n" id="bt-nifty">—</div></div>
+        <div class="bm"><div class="bm-l">Net Alpha</div><div class="bm-v g" id="bt-alpha">—</div></div>
+        <div class="bm"><div class="bm-l">Sharpe Ratio</div><div class="bm-v n" id="bt-sharpe">—</div></div>
+        <div class="bm"><div class="bm-l">Max Drawdown</div><div class="bm-v y" id="bt-dd">—</div></div>
+        <div class="bm"><div class="bm-l">Information Ratio</div><div class="bm-v g" id="bt-ir">—</div></div>
+      </div>
+      <div class="g2">
+        <div class="card span2"><div class="card-title">Equity Curve — Portfolio vs NIFTY</div><div class="ch-lg"><canvas id="ch-equity"></canvas></div></div>
+        <div class="card"><div class="card-title">Target Status</div><div id="bt-targets"><div class="empty">Loading...</div></div></div>
+        <div class="card"><div class="card-title">Period Alpha Distribution</div><div class="ch"><canvas id="ch-periods"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- PERFORMANCE -->
+    <div id="sec-performance" class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">Forecast Accuracy Analytics</div>
+      <div class="g4" style="margin-bottom:14px">
+        <div class="scard"><div class="sl">Direction Accuracy</div><div class="sv" id="pf-acc">—</div><div class="ss">directional</div></div>
+        <div class="scard"><div class="sl">MAE</div><div class="sv" id="pf-mae">—</div><div class="ss">mean abs error</div></div>
+        <div class="scard"><div class="sl">Forecasts Evaluated</div><div class="sv" id="pf-n">—</div><div class="ss">matured</div></div>
+        <div class="scard"><div class="sl">Model Bias</div><div class="sv" id="pf-bias">—</div><div class="ss" id="pf-bias-s">—</div></div>
+      </div>
+      <div class="g2">
         <div class="card">
-          <div class="sec-hdr" style="margin-bottom:10px">
-            <div class="sec-title">Top Alpha Signals</div>
-            <span class="tag tag-neutral" id="alpha-count-badge">—</span>
-          </div>
-          <div id="alpha-table-wrap"><div class="skel" style="height:220px"></div></div>
+          <div class="card-title">Sector Hit Ratios</div>
+          <div class="perf-row" style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border2)"><span>Sector</span><span style="text-align:right">Hit%</span><span style="text-align:right">MAE</span><span style="text-align:right">N</span><span>Grade</span></div>
+          <div id="pf-sectors"><div class="empty">Loading...</div></div>
         </div>
-        <div class="card">
-          <div class="sec-hdr" style="margin-bottom:10px">
-            <div class="sec-title">Portfolio Allocation</div>
-            <div class="tabs" id="ov-port-tabs">
-              <button class="tab-btn active" onclick="switchOvPortTab('3M',this)">3M</button>
-              <button class="tab-btn" onclick="switchOvPortTab('1M',this)">1M</button>
-              <button class="tab-btn" onclick="switchOvPortTab('6M',this)">6M</button>
-            </div>
-          </div>
-          <div style="display:flex;gap:14px;align-items:flex-start">
-            <div class="donut-wrap" style="width:130px;height:130px">
-              <canvas id="donut1" width="130" height="130"></canvas>
-              <div class="donut-center">
-                <div class="dc-val" id="dc1-val">—</div>
-                <div class="dc-sub">POSITIONS</div>
-              </div>
-            </div>
-            <div style="flex:1;min-width:0" id="ov-port-list"><div class="skel" style="height:130px"></div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Insight preview -->
-      <div class="sec">
-        <div class="sec-hdr">
-          <div class="sec-title">Latest AI Insight</div>
-          <a class="tag tag-neutral" onclick="showSection('insights')" href="#" style="cursor:pointer">View All →</a>
-        </div>
-        <div id="insight-preview"><div class="skel" style="height:110px;border-radius:var(--r-lg)"></div></div>
+        <div class="card"><div class="card-title">NIFTY Benchmark (1Y)</div><div id="pf-bench"><div class="empty">Loading...</div></div></div>
       </div>
     </div>
 
-    <!-- MACRO SECTION -->
-    <div id="section-macro" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr"><div class="sec-title">Regime Classification</div></div>
-        <div class="g4" id="macro-regime-cards">
-          <div class="skel" style="height:88px;border-radius:var(--r-lg)"></div>
-          <div class="skel" style="height:88px;border-radius:var(--r-lg)"></div>
-          <div class="skel" style="height:88px;border-radius:var(--r-lg)"></div>
-          <div class="skel" style="height:88px;border-radius:var(--r-lg)"></div>
-        </div>
+    <!-- INSIGHTS -->
+    <div id="sec-insights" class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">AI-Generated Daily Insights</div>
+      <div class="g2" style="margin-bottom:14px" id="insights-top-row">
+        <div class="card"><div class="card-title">Today's Market Narrative</div><div id="insights-narrative" style="font-size:12px;color:var(--text2);line-height:1.8"><div class="empty">Loading...</div></div></div>
+        <div class="card"><div class="card-title">Forecast Intelligence & Macro Triggers</div><div id="insights-forward" style="font-size:12px;color:var(--text2);line-height:1.8"><div class="empty">Loading...</div></div></div>
       </div>
-      <div class="sec">
-        <div class="sec-hdr"><div class="sec-title">All Macro Variables</div></div>
-        <div class="g6" id="macro-all-cards"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-hdr"><div class="sec-title">Sector Performance — 30 Day</div></div>
-        <div id="sector-perf-wrap"><div class="skel" style="height:180px;border-radius:var(--r-lg)"></div></div>
-      </div>
+      <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">Historical Insights</div>
+      <div id="insights-list"><div class="empty">Loading...</div></div>
     </div>
-
-    <!-- ALPHA SECTION -->
-    <div id="section-alpha" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr">
-          <div class="sec-title">Alpha Signal Engine — All Subsectors</div>
-          <span class="tag tag-amber" id="alpha-section-badge">—</span>
-        </div>
-        <div class="card" style="padding:0;overflow:auto">
-          <div id="alpha-full-table"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PORTFOLIO SECTION -->
-    <div id="section-portfolio" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr">
-          <div class="sec-title">Portfolio Construction</div>
-          <div class="tabs" id="port-section-tabs">
-            <button class="tab-btn active" onclick="switchPortSection('3M',this)">3M</button>
-            <button class="tab-btn" onclick="switchPortSection('1M',this)">1M</button>
-            <button class="tab-btn" onclick="switchPortSection('6M',this)">6M</button>
-          </div>
-        </div>
-        <div class="g2">
-          <div class="card" style="display:flex;gap:18px;align-items:flex-start">
-            <div class="donut-wrap" style="width:155px;height:155px">
-              <canvas id="donut2" width="155" height="155"></canvas>
-              <div class="donut-center">
-                <div class="dc-val" id="dc2-val">—</div>
-                <div class="dc-sub">POSITIONS</div>
-              </div>
-            </div>
-            <div style="flex:1;min-width:0" id="port-full-list"></div>
-          </div>
-          <div class="card">
-            <div class="sec-hdr" style="margin-bottom:12px"><div class="sec-title">Risk Constraints</div></div>
-            <div id="port-risk-panel"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- FORECASTS SECTION -->
-    <div id="section-forecasts" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr">
-          <div class="sec-title">Forward Forecasts</div>
-          <div class="tabs" id="fc-filter-tabs">
-            <button class="tab-btn active" onclick="filterForecasts('all',this)">All</button>
-            <button class="tab-btn" onclick="filterForecasts('1M',this)">1M</button>
-            <button class="tab-btn" onclick="filterForecasts('3M',this)">3M</button>
-            <button class="tab-btn" onclick="filterForecasts('6M',this)">6M</button>
-          </div>
-        </div>
-        <div id="forecasts-grid" class="g-auto"></div>
-      </div>
-    </div>
-
-    <!-- BACKTEST SECTION -->
-    <div id="section-backtest" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr">
-          <div class="sec-title">Walk-Forward Backtest</div>
-          <div class="tabs" id="bt-tabs">
-            <button class="tab-btn active" onclick="loadBacktest(3,this)">3Y</button>
-            <button class="tab-btn" onclick="loadBacktest(5,this)">5Y</button>
-          </div>
-        </div>
-        <div id="bt-metrics" class="g4" style="margin-bottom:16px"></div>
-        <div class="card">
-          <div class="sec-hdr" style="margin-bottom:14px"><div class="sec-title">Equity Curve — Portfolio vs NIFTY</div></div>
-          <div style="position:relative;height:270px"><canvas id="eq-chart"></canvas></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PERFORMANCE SECTION -->
-    <div id="section-performance" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr"><div class="sec-title">Forecast Accuracy Analytics</div></div>
-        <div class="g4" id="perf-kpis" style="margin-bottom:16px"></div>
-        <div class="g2">
-          <div class="card">
-            <div class="sec-hdr" style="margin-bottom:11px"><div class="sec-title">By Horizon</div></div>
-            <div id="perf-by-horizon"></div>
-          </div>
-          <div class="card">
-            <div class="sec-hdr" style="margin-bottom:11px"><div class="sec-title">Sector Hit Ratios</div></div>
-            <div id="perf-by-sector"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- INSIGHTS SECTION -->
-    <div id="section-insights" class="section-panel">
-      <div class="sec">
-        <div class="sec-hdr"><div class="sec-title">AI Daily Insights</div></div>
-        <div id="insights-list" style="display:flex;flex-direction:column;gap:14px"></div>
-      </div>
-    </div>
-
-  </div><!-- page -->
-</main>
+  </main>
 </div>
 
-<div class="toast-container" id="toast-container"></div>
-
 <script>
-const API = 'http://localhost:5001/api';
-const POLL = 60000;
+// ─────────────────────────────────────────────────────────────────
+// CONFIG — update this URL if using ngrok or production
+// ─────────────────────────────────────────────────────────────────
+const API = 'http://localhost:5001';
 
-// ── state ──────────────────────────────────────────────────────────────────
-const S = {
-  status: null, macro: null, alpha: null,
-  portfolio: {}, forecasts: null,
-  performance: null, backtest: null, insights: null,
-  history: null,
-  section: 'overview', fcFilter: 'all',
-};
-let _d1 = null, _d2 = null, _eq = null, _spark = null;
+// ─────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────
+const _ch = {};
+let _fcData = [];
+let _portH  = '3M';
+let _btYrs  = 3;
 
-// chart colour palette
-const PALETTE = ['#00c87a','#f5a623','#3b82f6','#8b5cf6','#f04060','#22d3ee','#a3e635','#fb923c','#e879f9','#38bdf8'];
+// ─────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────
+const f   = (n,d=2,sign=false) => { if(n==null||isNaN(n)) return '—'; const s=Number(n).toFixed(d); return sign&&n>0?'+'+s:s; };
+const pct = (n,d=2,sign=false) => f(n,d,sign)+'%';
+const cc  = n => n>0?'up':n<0?'dn':'fl';
+const cs  = n => n>0?'color:var(--green)':n<0?'color:var(--red)':'color:var(--text2)';
+const arr = n => `<span style="${cs(n)}">${n>=0?'▲':'▼'}</span>`;
 
-// ── helpers ────────────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-const fmt = (n, d=2) => n == null ? '—' : Number(n).toFixed(d);
-const fmtN = n => n == null ? '—' : Number(n).toLocaleString('en-IN', {maximumFractionDigits:2});
-const fmtPct = (n, d=2) => n == null ? '—' : `${n>=0?'+':''}${fmt(n,d)}%`;
-const clr = n => n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text-2)';
-const cls = n => n > 0 ? 'g' : n < 0 ? 'r' : 'm';
-const regClass = r => `regime-${(r||'UNKNOWN').replace(/ /g,'_')}`;
-
-function toast(msg, type='info') {
-  const c = $('toast-container'), t = document.createElement('div');
-  t.className = 'toast';
-  const ic = type==='error'?'✕':type==='success'?'✓':'ℹ';
-  const col = type==='error'?'var(--red)':type==='success'?'var(--green)':'var(--blue)';
-  t.innerHTML = `<span style="color:${col};font-weight:600">${ic}</span>${msg}`;
-  c.appendChild(t);
-  setTimeout(()=>t.remove(), 3800);
+function regimeCls(r=''){
+  r=(r||'').toUpperCase();
+  if(r.includes('BULL')||r==='STRONG_BULL') return 'bull';
+  if(r.includes('BEAR')||r==='RISK_OFF')    return 'bear';
+  return 'neut';
 }
 
-async function api(ep, method='GET', body=null) {
-  try {
-    const opts = {method, headers:{'Content-Type':'application/json'}};
-    if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(`${API}${ep}`, opts);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } catch(e) { return null; }
-}
+function destroyChart(id){ if(_ch[id]){_ch[id].destroy();delete _ch[id];} }
 
-// ── SECTION NAV ────────────────────────────────────────────────────────────
-const TITLES = {overview:'Dashboard',macro:'Macro Regime',alpha:'Alpha Signals',portfolio:'Portfolio',forecasts:'Forecasts',backtest:'Backtest',performance:'Performance',insights:'AI Insights'};
-
-function showSection(name) {
-  document.querySelectorAll('.section-panel').forEach(el=>el.classList.remove('active'));
-  const el = $(`section-${name}`); if(el) el.classList.add('active');
-  S.section = name;
-  $('page-title').textContent = TITLES[name] || name;
-  document.querySelectorAll('.nav-item').forEach(n => {
-    n.classList.toggle('active', (n.getAttribute('onclick')||'').includes(`'${name}'`));
-  });
-  if (name==='alpha')       renderAlphaFull();
-  if (name==='portfolio')   renderPortSection('3M');
-  if (name==='forecasts')   renderForecasts(S.fcFilter);
-  if (name==='backtest')    loadBacktest(3);
-  if (name==='performance') renderPerformance();
-  if (name==='insights')    renderInsights();
-  if (name==='macro')       renderMacroSection();
-}
-
-// ── LOAD ALL ───────────────────────────────────────────────────────────────
-async function loadAll() {
-  await loadStatus();
-  await loadMacro();
-  await Promise.all([loadAlpha(), loadPortfolio('3M'), loadForecasts(), loadPerformance(), loadInsights(), loadHistory()]);
-  renderOverview();
-}
-
-async function loadStatus()      { const d = await api('/status');      if (d) S.status = d;      updateTopBar(); setStatus('online'); }
-async function loadMacro()       { const d = await api('/macro');        if (d) S.macro = d;       }
-async function loadAlpha()       { const d = await api('/alpha');        if (d) S.alpha = d;       }
-async function loadPortfolio(h)  { const d = await api(`/portfolio?horizon=${h}`); if (d) S.portfolio[h] = d; }
-async function loadForecasts()   { const d = await api('/forecasts');   if (d) S.forecasts = d;   }
-async function loadPerformance() { const d = await api('/performance'); if (d) S.performance = d; }
-async function loadInsights()    { const d = await api('/insights');    if (d) S.insights = d;    }
-async function loadHistory()     { const d = await api('/macro-history?days=30'); if (d) S.history = d; }
-
-// ── TOP BAR ────────────────────────────────────────────────────────────────
-function updateTopBar() {
-  const s = S.status; if (!s) return;
-  $('topbar-date').textContent = s.pipeline_date || '—';
-
-  const nifty = s.nifty || {};
-  if (nifty.level) {
-    $('nifty-val').textContent = fmtN(nifty.level);
-    const rc = nifty.return_pct;
-    const chgEl = $('nifty-chg');
-    chgEl.textContent = fmtPct(rc);
-    chgEl.className = `nifty-chg ${cls(rc)}`;
-    $('nifty-pts').textContent = `${nifty.points >= 0 ? '+' : ''}${fmtN(nifty.points)} pts`;
+const CX = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{ labels:{ color:'#8B97A8', font:{size:10}, boxWidth:12 } } },
+  scales:{
+    x:{ grid:{color:'rgba(255,255,255,.03)'}, ticks:{color:'#4A5568',font:{size:10},maxTicksLimit:8} },
+    y:{ grid:{color:'rgba(255,255,255,.03)'}, ticks:{color:'#4A5568',font:{size:10}} }
   }
-
-  const rb = $('regime-badge'), reg = s.regime_label || 'UNKNOWN';
-  rb.textContent = reg.replace(/_/g,' ');
-  rb.className = `regime-badge ${regClass(reg)}`;
-}
-
-function setStatus(state) {
-  const dot = $('sdot'), txt = $('api-status-text');
-  if (state === 'online') {
-    dot.style.background = 'var(--green)';
-    dot.style.boxShadow  = '0 0 5px var(--green)';
-    txt.textContent = 'API Online';
-  } else {
-    dot.style.background = 'var(--red)';
-    dot.style.boxShadow  = '0 0 5px var(--red)';
-    txt.textContent = 'API Offline';
-  }
-}
-
-// ── NIFTY SPARKLINE ────────────────────────────────────────────────────────
-function drawSparkline(data) {
-  const canvas = $('nifty-spark');
-  if (!canvas || !data || data.length < 2) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  const vals = data.map(d => d.nifty_close).filter(v => v > 0);
-  if (vals.length < 2) return;
-  const mn = Math.min(...vals), mx = Math.max(...vals);
-  const range = mx - mn || 1;
-  const pts = vals.map((v,i) => [
-    (i / (vals.length-1)) * (w - 2) + 1,
-    h - 4 - ((v - mn) / range) * (h - 8),
-  ]);
-  const last = pts[pts.length-1], first = pts[0];
-  const isUp = vals[vals.length-1] >= vals[0];
-  const lineColor = isUp ? '#00c87a' : '#f04060';
-
-  ctx.clearRect(0, 0, w, h);
-  // fill
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, isUp ? 'rgba(0,200,122,0.2)' : 'rgba(240,64,96,0.2)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.beginPath();
-  ctx.moveTo(pts[0][0], h - 4);
-  pts.forEach(([x,y]) => ctx.lineTo(x,y));
-  ctx.lineTo(pts[pts.length-1][0], h - 4);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
-  // line
-  ctx.beginPath();
-  pts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y));
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  // dot
-  ctx.beginPath();
-  ctx.arc(last[0], last[1], 2.5, 0, Math.PI*2);
-  ctx.fillStyle = lineColor;
-  ctx.fill();
-}
-
-// ── SVG ICONS for macro cards ──────────────────────────────────────────────
-const ICON = {
-  crude:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 19h14M6 19V8l6-5 6 5v11"/><path d="M12 19v-6m-2 6v-4m4 4v-4"/></svg>`,
-  fx:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>`,
-  vix:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>`,
-  rate:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>`,
-  fii:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>`,
-  gdp:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><polyline points="7,16 11,11 15,13 19,8"/></svg>`,
-  cpi:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>`,
-  gst:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>`,
-  gold:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>`,
-  nasdaq:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M3 9h4l3 8 4-14 3 6h4"/></svg>`,
-  sp500:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><polyline points="7,17 11,12 15,14 19,9"/></svg>`,
-  iip:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
 };
 
-function mcIcon(key, iconColor) {
-  return `<div class="mc-icon" style="background:${iconColor}1a;color:${iconColor}">${ICON[key]||ICON.gdp}</div>`;
+// ─────────────────────────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────────────────────────
+function go(id){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.nav').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('on');
+  document.querySelector(`[data-s="${id}"]`).classList.add('active');
+  ({overview:loadOverview,macro:loadMacro,sectors:loadSectors,alpha:loadAlpha,
+    forecasts:loadForecasts,portfolio:loadPortfolio,backtest:()=>loadBt(_btYrs),
+    performance:loadPerformance,insights:loadInsights})[id]?.();
 }
 
-// ── MACRO CARDS ────────────────────────────────────────────────────────────
-function renderMacroCards() {
-  const m = S.macro?.macro; if (!m) return;
+// ─────────────────────────────────────────────────────────────────
+// TOPBAR
+// API: GET /api/status  → fields at ROOT: pipeline_date, nifty{level,return_pct,points,is_valid}, regime_label, regime_score, is_trading_day, engine_mode
+// API: GET /api/macro   → fields at ROOT: macro{india_vix,usdinr,brent_crude,repo_rate,fii_flows}, regime{overall_regime,...}
+// ─────────────────────────────────────────────────────────────────
+async function loadTopbar(){
+  try{
+    // NOTE: success() in marketos_api.py does payload.update(data)
+    // so ALL fields are at the ROOT of the JSON — NOT under d.data
+    const d = await fetch(`${API}/api/status`).then(r=>r.json());
 
-  const cards = [
-    { label:'Brent Crude', key:'crude', val:m.brent_crude?.current, unit:'$/bbl', chg:m.brent_crude?.change_pct, bar:Math.min(100,((m.brent_crude?.current||80)/120)*100), ic:'var(--amber)', bull:false },
-    { label:'USD / INR',   key:'fx',    val:m.usdinr?.current,       unit:'₹',     chg:m.usdinr?.change_pct,     bar:Math.min(100,((m.usdinr?.current||83)/90)*100),          ic:'var(--blue)' },
-    { label:'India VIX',  key:'vix',   val:m.india_vix?.current,    unit:'',      chg:m.india_vix?.change_pct,  bar:Math.min(100,((m.india_vix?.current||15)/35)*100),       ic:(m.india_vix?.current||15)>20?'var(--red)':'var(--amber)' },
-    { label:'Repo Rate',  key:'rate',  val:m.repo_rate?.current,    unit:'%',     chg:m.repo_rate?.change,      bar:Math.min(100,((m.repo_rate?.current||6.5)/10)*100),      ic:'var(--purple)' },
-    { label:'FII Flows',  key:'fii',   val:m.fii_flows?.net_crore,  unit:'Cr',    signal:m.fii_flows?.signal,   bar:50, ic:(m.fii_flows?.net_crore||0)>0?'var(--green)':'var(--red)' },
-    { label:'GDP Growth', key:'gdp',   val:m.gdp_growth?.current,   unit:'%',     chg:null,                     bar:Math.min(100,((m.gdp_growth?.current||6)/10)*100),      ic:'var(--green)' },
-  ];
+    const lvl = d.nifty?.level;
+    const ret = d.nifty?.return_pct;
+    const pts = d.nifty?.points;
+    const rl  = d.regime_label || 'NEUTRAL';
 
-  $('macro-cards').innerHTML = cards.map(c => {
-    const valColor = c.chg != null ? clr(c.chg) : c.val != null ? clr(c.val) : 'var(--text-1)';
-    let chgHtml;
-    if (c.signal) {
-      const sc = c.signal==='BULLISH'?'tag-pass':c.signal==='BEARISH'?'tag-excl':'tag-neutral';
-      chgHtml = `<span class="tag ${sc}">${c.signal}</span>`;
-    } else if (c.chg != null) {
-      chgHtml = `<span class="${cls(c.chg)}">${fmtPct(c.chg)}</span>`;
-    } else {
-      chgHtml = '<span class="d">—</span>';
+    document.getElementById('tb-lvl').textContent =
+      lvl ? lvl.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+
+    const chgEl = document.getElementById('tb-chg');
+    if(ret!=null){ chgEl.textContent=pct(ret,2,true); chgEl.className='chg '+cc(ret); }
+
+    document.getElementById('tb-date').textContent = d.pipeline_date||'—';
+
+    const rb = document.getElementById('tb-regime');
+    rb.textContent = rl; rb.className = 'regime '+regimeCls(rl);
+    document.getElementById('tb-dot').className = 'dot'+(d.is_trading_day?'':' off');
+
+    // Overview stat cards
+    if(document.getElementById('ov-nifty')){
+      const ovN = document.getElementById('ov-nifty');
+      ovN.textContent = lvl?lvl.toLocaleString('en-IN',{minimumFractionDigits:2}):'—';
+      ovN.className   = 'sv '+(ret!=null?cc(ret):'');
+      document.getElementById('ov-nifty-s').textContent  = ret!=null?`${pct(ret,2,true)} | ${pts>=0?'+':''}${f(pts,0)} pts`:'—';
+      document.getElementById('ov-regime').textContent   = rl;
+      document.getElementById('ov-regime-s').textContent = `Score ${d.regime_score||0}/10`;
+      document.getElementById('ov-date').textContent     = d.pipeline_date||'—';
+      document.getElementById('ov-date-s').textContent   = d.engine_mode||'—';
     }
-    return `<div class="mc">
-      <div class="mc-top">
-        <div class="mc-label">${c.label}</div>
-        ${mcIcon(c.key, c.ic)}
-      </div>
-      <div class="mc-val" style="color:${c.ic}">${fmtN(c.val)}<span style="font-size:10px;font-family:var(--mono);color:var(--text-3);margin-left:3px">${c.unit}</span></div>
-      <div class="mc-chg">${chgHtml}</div>
-      <div class="mc-bar"><div class="mc-bar-fill" style="width:${c.bar}%;background:${c.ic}"></div></div>
-    </div>`;
-  }).join('');
+    // Market Status & Pipeline Info card
+    if(document.getElementById('ov-session')){
+      const ss=d.session_state||'UNKNOWN';
+      const sessEl=document.getElementById('ov-session');
+      sessEl.textContent=ss.replace(/_/g,' ');
+      sessEl.className='sv '+(ss==='LIVE'||ss==='MARKET_OPEN'?'up':ss==='AFTER_HOURS'?'':'dn');
+      document.getElementById('ov-session-s').textContent=d.close_reason||d.engine_mode||'—';
+      const qEl=document.getElementById('ov-quality');
+      const dq=d.data_quality||'UNKNOWN';
+      qEl.textContent=dq;
+      qEl.className='sv '+(dq==='VALID'?'up':dq==='STALE'?'dn':'');
+      document.getElementById('ov-quality-s').textContent=d.engine_mode||'—';
+      document.getElementById('ov-next-trade').textContent=d.next_trading_day||'—';
+      document.getElementById('ov-next-trade-s').textContent='Last: '+(d.last_trading_day||'—');
+      const validEl=document.getElementById('ov-nifty-valid');
+      const isV=d.nifty?.is_valid;
+      validEl.textContent=isV?'✓ PASS':'✗ FAIL';
+      validEl.className='sv '+(isV?'up':'dn');
+      document.getElementById('ov-nifty-valid-s').textContent=d.nifty?.level?'Level: '+d.nifty.level.toLocaleString('en-IN'):'—';
+    }
+  }catch(e){ console.warn('Status error',e); }
 
-  $('macro-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'});
+  try{
+    const d = await fetch(`${API}/api/macro`).then(r=>r.json());
+    // ROOT level: d.macro = {india_vix:{current,change_pct,regime,score}, usdinr:{...}, brent_crude:{...}, fii_flows:{estimated_crore,signal}}
+    const m = d.macro || {};
+
+    const vix    = m.india_vix?.current;
+    const usdinr = m.usdinr?.current;
+    const crude  = m.brent_crude?.current;
+    const fii    = m.fii_flows?.estimated_crore;
+
+    document.getElementById('tb-vix').textContent    = vix    ? f(vix,1)         : '—';
+    document.getElementById('tb-usdinr').textContent = usdinr ? '₹'+f(usdinr,2) : '—';
+    document.getElementById('tb-crude').textContent  = crude  ? '$'+f(crude,1)   : '—';
+    document.getElementById('tb-fii').textContent    = fii!=null?(fii>=0?'+':'')+Math.round(fii)+' Cr':'—';
+
+    if(document.getElementById('ov-vix')){
+      document.getElementById('ov-vix').textContent  = vix ? f(vix,1) : '—';
+      document.getElementById('ov-vix-s').textContent= vix?(vix>20?'⚠ Elevated':vix<15?'✓ Low':'Moderate'):'—';
+    }
+  }catch(e){}
 }
 
-// ── ALPHA TABLE (overview — top 10) ───────────────────────────────────────
-function renderAlphaTable() {
-  const a = S.alpha?.alpha;
-  if (!a) {
-    $('alpha-table-wrap').innerHTML = emptyState('No alpha data. Run pipeline first.');
-    return;
-  }
-  const entries = Object.entries(a).slice(0, 10);
-  $('alpha-count-badge').textContent = `${Object.keys(a).length} sectors`;
+// ─────────────────────────────────────────────────────────────────
+// OVERVIEW
+// ─────────────────────────────────────────────────────────────────
+async function loadOverview(){
+  loadTopbar();
+  // NIFTY chart from macro-history
+  try{
+    const d = await fetch(`${API}/api/macro-history?days=30`).then(r=>r.json());
+    // ROOT: d.macro_history = [{date,nifty_close,india_vix,brent_crude,usdinr,fii_net_crore}]
+    const h = d.macro_history||[];
+    if(h.length){
+      const labels=h.map(x=>x.date.slice(5));
+      const vals=h.map(x=>x.nifty_close);
+      const up=vals[vals.length-1]>=vals[0];
+      destroyChart('nifty');
+      const ctx=document.getElementById('ch-nifty').getContext('2d');
+      _ch['nifty']=new Chart(ctx,{type:'line',
+        data:{labels,datasets:[{data:vals,borderColor:up?'#00D4AA':'#FF4757',backgroundColor:up?'rgba(0,212,170,.06)':'rgba(255,71,87,.06)',borderWidth:2,fill:true,tension:.3,pointRadius:0}]},
+        options:{...CX,plugins:{legend:{display:false}},scales:{x:CX.scales.x,y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>v.toLocaleString('en-IN',{maximumFractionDigits:0})}}}}
+      });
+    }
+  }catch(e){}
 
-  $('alpha-table-wrap').innerHTML = `<table class="tbl">
-    <thead><tr><th>#</th><th>Subsector</th><th>Alpha</th><th>Bar</th><th>Momentum %</th><th>Macro</th><th>Status</th></tr></thead>
-    <tbody>${entries.map(([sub,d], i) => {
-      const rb = i===0?'gold':i===1?'silver':i===2?'bronze':'';
-      const bc = d.excluded ? 'var(--red)' : d.alpha_score > 0.75 ? 'var(--green)' : 'var(--amber)';
-      return `<tr>
-        <td><span class="rank-badge ${rb}">${d.signal_rank}</span></td>
-        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500">${sub}</td>
-        <td class="${d.alpha_score>=0.6?'g':d.alpha_score>=0.4?'a':'r'}" style="font-weight:600">${fmt(d.alpha_score,3)}</td>
-        <td><div class="alpha-bar"><div class="alpha-bar-fill" style="width:${(d.alpha_score*100).toFixed(1)}%;background:${bc}"></div></div></td>
-        <td class="${cls(d.raw_momentum_pct)}">${d.raw_momentum_pct>=0?'+':''}${fmt(d.raw_momentum_pct)}%</td>
-        <td class="d">${fmt(d.macro_alignment,3)}</td>
-        <td><span class="tag ${d.excluded?'tag-excl':'tag-pass'}">${d.excluded?'EXCL':'PASS'}</span></td>
-      </tr>`;
-    }).join('')}</tbody></table>`;
+  // Top opportunities from forecasts
+  try{
+    const d = await fetch(`${API}/api/forecasts`).then(r=>r.json());
+    // ROOT: d.forecasts = [{sector,subsector,horizon,base_case_return,bull_case_return,bear_case_return,confidence_score,opportunity_score,...}]
+    const rows=(d.forecasts||[]).filter(x=>x.horizon==='3M').sort((a,b)=>(b.opportunity_score||0)-(a.opportunity_score||0)).slice(0,5);
+    const el=document.getElementById('ov-opps');
+    if(!rows.length){el.innerHTML='<div class="empty">Run pipeline first to see opportunities</div>';return;}
+    el.innerHTML=rows.map((r,i)=>`
+      <div style="display:grid;grid-template-columns:20px 1fr 65px 50px;gap:6px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${i+1}</span>
+        <div><div style="font-size:11px;font-weight:500">${r.subsector||r.sector||'—'}</div><div style="font-size:10px;color:var(--text3)">${r.sector||''}</div></div>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;text-align:right;${cs(r.base_case_return)}">${pct(r.base_case_return,1,true)}</span>
+        <span style="text-align:right;font-family:var(--mono);font-size:10px;color:var(--green)">${f(r.opportunity_score,1)}/10</span>
+      </div>`).join('');
+  }catch(e){document.getElementById('ov-opps').innerHTML='<div class="empty">Run pipeline first</div>';}
+
+  // Sector snapshot
+  try{
+    const d = await fetch(`${API}/api/sector-performance?days=1`).then(r=>r.json());
+    // ROOT: d.sector_performance = [{date,sector,subsector,sector_return,subsector_return,macro_alignment,...}]
+    const rows=d.sector_performance||[];
+    const byS={};
+    rows.forEach(r=>{ if(!byS[r.sector]) byS[r.sector]={ret:0,n:0}; byS[r.sector].ret+=(r.sector_return||0); byS[r.sector].n++; });
+    const el=document.getElementById('ov-sectors');
+    const entries=Object.entries(byS).sort((a,b)=>Math.abs(b[1].ret/b[1].n)-Math.abs(a[1].ret/a[1].n));
+    if(!entries.length){el.innerHTML='<div class="empty">Run pipeline first</div>';return;}
+    el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 60px;gap:4px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:0 0 6px;border-bottom:1px solid var(--border);margin-bottom:4px"><span>Sector</span><span style="text-align:right">Return</span></div>`
+      +entries.slice(0,7).map(([s,v])=>{const ret=v.ret/v.n;return`<div style="display:grid;grid-template-columns:1fr 60px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center"><span style="font-size:11px">${s}</span><span style="font-family:var(--mono);font-size:11px;text-align:right;${cs(ret)}">${pct(ret,2,true)}</span></div>`;}).join('');
+  }catch(e){document.getElementById('ov-sectors').innerHTML='<div class="empty">Run pipeline first</div>';}
+
+  // Latest insight
+  try{
+    const d = await fetch(`${API}/api/insights?limit=1`).then(r=>r.json());
+    // ROOT: d.insights = [{date,full_insight,what_text,regime_label,nifty_return,top_sector}]
+    const ins=(d.insights||[])[0];
+    if(ins){
+      const txt=(ins.full_insight||ins.what_text||'—');
+      document.getElementById('ov-insight').textContent=txt.length>500?txt.slice(0,500)+'…':txt;
+    }
+  }catch(e){}
 }
 
-// ── DONUT CHART ────────────────────────────────────────────────────────────
-function buildDonut(canvasId, centerId, horizon, ref) {
-  const p = S.portfolio[horizon];
-  if (!p?.portfolio) return;
+// ─────────────────────────────────────────────────────────────────
+// MACRO
+// ─────────────────────────────────────────────────────────────────
+async function loadMacro(){
+  try{
+    const d = await fetch(`${API}/api/macro`).then(r=>r.json());
+    // ROOT: d.macro = {india_vix,usdinr,brent_crude,repo_rate,fii_flows}
+    // ROOT: d.regime = {overall_regime,regime_score,legacy_score,bull_bear_label}
+    const m=d.macro||{}, rg=d.regime||{};
+    const rl=rg.overall_regime||'NEUTRAL';
+    document.getElementById('macro-regime').textContent=rl;
+    document.getElementById('macro-regime').className='regime '+regimeCls(rl);
+    document.getElementById('macro-sub').textContent=`Score: ${f(rg.regime_score,3,true)} (${rg.legacy_score||0}/10) · ${rg.bull_bear_label||'—'}`;
+    document.getElementById('macro-sub-regimes').innerHTML = `
+      <div class="pill"><span class="pill-l">VOL</span><span class="pill-v" style="font-size:10px">${rg.volatility_regime||'—'}</span></div>
+      <div class="pill"><span class="pill-l">RATE</span><span class="pill-v" style="font-size:10px">${rg.rate_regime||'—'}</span></div>
+      <div class="pill"><span class="pill-l">GLOBAL</span><span class="pill-v" style="font-size:10px">${rg.global_regime||'—'}</span></div>
+    `;
 
-  const allocs = Object.entries(p.portfolio)
-    .filter(([k, v]) => typeof v === 'object' && v !== null && (v.weight||0) > 0.001)
-    .sort((a,b) => b[1].weight - a[1].weight);
+    const sigs=[
+      {key:'india_vix',  label:'India VIX',  fmt:v=>f(v,1)},
+      {key:'usdinr',     label:'USD/INR',     fmt:v=>'₹'+f(v,2)},
+      {key:'brent_crude',label:'Brent Crude', fmt:v=>'$'+f(v,1)},
+      {key:'repo_rate',  label:'Repo Rate',   fmt:v=>f(v,2)+'%'},
+      {key:'fii_flows',  label:'FII Flows',   fmt:()=>''},
+    ];
+    document.getElementById('macro-signals').innerHTML=sigs.map(s=>{
+      const dat=m[s.key]||{};
+      let val='—', chgHtml='';
+      const score=dat.score??0, bw=Math.min(100,Math.abs(score)*100), bc=score>0?'pos':score<0?'neg':'neu';
+      if(s.key==='fii_flows'){
+        const fi=dat.estimated_crore??0; val=(fi>=0?'+':'')+Math.round(fi)+' Cr';
+        chgHtml=`<div class="mc-chg ${fi>=0?'up':'dn'}">${dat.signal||'—'}</div>`;
+      } else {
+        const cur=dat.current, chg=dat.change_pct??dat.change;
+        if(cur!=null) val=s.fmt(cur);
+        if(chg!=null) chgHtml=`<div class="mc-chg ${cc(chg)}">${chg>=0?'+':''}${f(chg,2)}%</div>`;
+      }
+      return `<div class="mc"><div class="mc-name">${s.label}</div><div class="mc-val">${val}</div>${chgHtml}<div class="mc-tag">${dat.regime||dat.signal||'—'}</div><div class="sig-track"><div class="sig-fill ${bc}" style="width:${bc==='neu'?50:bw}%"></div></div></div>`;
+    }).join('');
 
-  if (window[ref]) window[ref].destroy();
-  const ctx = document.getElementById(canvasId);
-  if (!ctx) return;
+    const factors=[
+      {k:'india_vix',l:'VIX',w:'30%'},{k:'fii_flows',l:'FII',w:'25%'},
+      {k:'usdinr',l:'FX',w:'15%'},{k:'brent_crude',l:'Crude',w:'15%'},{k:'repo_rate',l:'Rate',w:'15%'}
+    ];
+    document.getElementById('regime-breakdown').innerHTML=
+      `<div style="display:grid;grid-template-columns:70px 80px 60px 80px 1fr;gap:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding-bottom:6px;border-bottom:1px solid var(--border)"><span>Factor</span><span>Score</span><span>Weight</span><span>Weighted</span><span>Regime</span></div>`+
+      factors.map(fac=>{const dat=m[fac.k]||{},sc=dat.score??0,wt=parseFloat(fac.w)/100,wsc=sc*wt,rg=dat.regime||dat.signal||'—';
+        return `<div style="display:grid;grid-template-columns:70px 80px 60px 80px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(30,38,51,.5);align-items:center;font-size:12px"><span style="font-weight:500">${fac.l}</span><span style="font-family:var(--mono);${cs(sc)}">${f(sc,2,true)}</span><span style="color:var(--text3)">${fac.w}</span><span style="font-family:var(--mono);${cs(wsc)}">${f(wsc,3,true)}</span><span style="color:var(--text2);font-size:11px">${rg}</span></div>`;
+      }).join('');
+  }catch(e){console.warn('Macro error',e);}
 
-  window[ref] = new Chart(ctx.getContext('2d'), {
-    type: 'doughnut',
-    data: {
-      labels: allocs.map(([k]) => k),
-      datasets: [{
-        data: allocs.map(([,v]) => parseFloat(((v.weight||0)*100).toFixed(2)), // FIX: parseFloat not string
-        backgroundColor: PALETTE.slice(0, allocs.length),
-        borderColor: 'var(--card)',
-        borderWidth: 2,
-      }],
-    },
-    options: {
-      cutout: '72%',
-      responsive: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#131f30',
-          bodyColor: '#d0dae8',
-          titleColor: '#7a90aa',
-          borderColor: '#1b2d44',
-          borderWidth: 1,
-          callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toFixed(1)}%` },
-        },
-      },
-      animation: { duration: 500 },
-    },
-  });
-  if (centerId) $(centerId).textContent = allocs.length;
-}
-
-function renderPortList(listId, horizon) {
-  const p = S.portfolio[horizon];
-  if (!p?.portfolio) {
-    $(listId).innerHTML = emptyState('Run pipeline first.');
-    return;
-  }
-  const allocs = Object.entries(p.portfolio)
-    .filter(([k,v]) => typeof v==='object' && v!==null && (v.weight||0) > 0.001)
-    .sort((a,b) => b[1].weight - a[1].weight)
-    .slice(0, 8);
-
-  $(listId).innerHTML = allocs.map(([sec, data], i) => `
-    <div class="port-row">
-      <div class="port-dot" style="background:${PALETTE[i]}"></div>
-      <div style="flex:1;min-width:0">
-        <div class="port-name">${sec}</div>
-        <div class="port-sub">${data.expected_return != null ? fmtPct(data.expected_return) + ' exp' : ''}</div>
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div class="port-wt" style="color:${PALETTE[i]}">${((data.weight||0)*100).toFixed(1)}%</div>
-        <div class="port-bar"><div class="port-bar-fill" style="width:${((data.weight||0)*100).toFixed(1)}%;background:${PALETTE[i]}"></div></div>
-      </div>
-    </div>`).join('');
-}
-
-// ── PERF METRICS (overview) ────────────────────────────────────────────────
-function renderPerfKPIs() {
-  const p = S.performance?.performance;
-  const nb = p?.nifty_benchmark || {};
-  const o  = p?.overall || {};
-
-  const dirAcc = o.direction_accuracy;
-  $('kpi-dir').innerHTML    = dirAcc != null ? `<span class="${(dirAcc||0)>=0.6?'g':'a'}">${fmt(o.direction_accuracy_pct,1)}%</span>` : '—';
-  $('kpi-sharpe').innerHTML = nb.sharpe_ratio != null ? `<span class="${(nb.sharpe_ratio||0)>=1?'g':(nb.sharpe_ratio||0)>=0.5?'a':'r'}">${fmt(nb.sharpe_ratio,2)}</span>` : '—';
-  $('kpi-nann').innerHTML   = nb.annualised_return_pct != null ? `<span class="${cls(nb.annualised_return_pct)}">${fmtPct(nb.annualised_return_pct)}</span>` : '—';
-  $('kpi-dd').innerHTML     = nb.max_drawdown_pct != null ? `<span class="r">${fmt(nb.max_drawdown_pct,2)}%</span>` : '—';
-}
-
-// ── INSIGHT PREVIEW ────────────────────────────────────────────────────────
-function renderInsightPreview() {
-  const ins = S.insights?.insights;
-  if (!ins || !ins.length) {
-    $('insight-preview').innerHTML = emptyState('No insights yet. Run daily pipeline first.');
-    return;
-  }
-  const i = ins[0];
-  $('insight-preview').innerHTML = `<div class="insight">
-    <div class="ins-meta">
-      <span>📅 ${i.date}</span>
-      <span>Regime: <span class="a">${i.regime_label||'—'}</span></span>
-      <span>NIFTY: <span class="${cls(i.nifty_return)}">${fmtPct(i.nifty_return)}</span></span>
-      ${i.top_sector ? `<span>Top: <span class="b">${i.top_sector}</span></span>` : ''}
-    </div>
-    ${i.what_text ? `<div class="ins-section-title">What Happened</div><div class="ins-text">${i.what_text}</div>` : ''}
-    ${i.implication ? `<div class="ins-section-title">Implication</div><div class="ins-text">${i.implication.slice(0,200)}${i.implication.length>200?'…':''}</div>` : ''}
-  </div>`;
-}
-
-// ── OVERVIEW ────────────────────────────────────────────────────────────────
-function renderOverview() {
-  renderMacroCards();
-  renderAlphaTable();
-  buildDonut('donut1', 'dc1-val', '3M', '_d1');
-  renderPortList('ov-port-list', '3M');
-  renderPerfKPIs();
-  renderInsightPreview();
-  if (S.history?.macro_history) drawSparkline(S.history.macro_history);
-}
-
-async function switchOvPortTab(h, btn) {
-  $('ov-port-tabs').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  if (!S.portfolio[h]) await loadPortfolio(h);
-  buildDonut('donut1', 'dc1-val', h, '_d1');
-  renderPortList('ov-port-list', h);
-}
-
-// ── MACRO SECTION ──────────────────────────────────────────────────────────
-function renderMacroSection() {
-  renderMacroCards();
-  const m = S.macro; if (!m) return;
-  const reg = m.regime || {};
-
-  $('macro-regime-cards').innerHTML = [
-    { label:'Overall Regime',  val:(reg.overall_regime||'—').replace(/_/g,' '), sub:`Score: ${reg.legacy_score != null ? (reg.legacy_score > 0 ? '+' : '') + reg.legacy_score : '—'}`, color: reg.overall_regime?.includes('BULL') ? 'var(--green)' : reg.overall_regime?.includes('BEAR') ? 'var(--red)' : 'var(--text-2)' },
-    { label:'Volatility',      val:reg.volatility_regime||'—', sub:'', color:'var(--amber)' },
-    { label:'Rate Regime',     val:reg.rate_regime||'—',       sub:'', color:'var(--purple)' },
-    { label:'Global Regime',   val:reg.global_regime||'—',     sub:'', color:'var(--blue)' },
-  ].map(c => `<div class="card">
-    <div class="mc-label" style="margin-bottom:8px">${c.label}</div>
-    <div class="mc-val" style="color:${c.color};font-size:15px">${c.val}</div>
-    ${c.sub ? `<div class="d" style="font-family:var(--mono);font-size:10px;margin-top:5px">${c.sub}</div>` : ''}
-  </div>`).join('');
-
-  // all macro variables
-  const mac = m.macro || {};
-  const allMac = [
-    { label:'Brent Crude', val:mac.brent_crude?.current, unit:'$/bbl', chg:mac.brent_crude?.change_pct },
-    { label:'USD/INR',     val:mac.usdinr?.current,       unit:'₹',    chg:mac.usdinr?.change_pct },
-    { label:'India VIX',  val:mac.india_vix?.current,    unit:'',     chg:mac.india_vix?.change_pct },
-    { label:'Repo Rate',  val:mac.repo_rate?.current,    unit:'%',    chg:mac.repo_rate?.change },
-    { label:'GDP Growth', val:mac.gdp_growth?.current,   unit:'%',    chg:null },
-    { label:'CPI YoY',   val:mac.cpi?.current,          unit:'%',    chg:null },
-    { label:'GST (Cr)',  val:mac.gst?.current,           unit:'Cr',   chg:mac.gst?.change_pct },
-    { label:'IIP Growth', val:mac.iip?.current,          unit:'%',    chg:null },
-    { label:'FII Net',   val:mac.fii_flows?.net_crore,  unit:'Cr',   chg:null },
-    { label:'NASDAQ',    val:mac.nasdaq?.close,          unit:'',     chg:mac.nasdaq?.change_pct },
-    { label:'S&P 500',   val:mac.sp500?.close,           unit:'',     chg:mac.sp500?.change_pct },
-    { label:'Gold',      val:mac.gold?.close,            unit:'$',    chg:mac.gold?.change_pct },
-  ];
-  $('macro-all-cards').innerHTML = allMac.map(c => `<div class="mc">
-    <div class="mc-label" style="margin-bottom:7px">${c.label}</div>
-    <div class="mc-val" style="font-size:16px">${fmtN(c.val)}<span style="font-size:9px;color:var(--text-3);margin-left:3px">${c.unit}</span></div>
-    ${c.chg != null ? `<div class="mc-chg ${cls(c.chg)}">${fmtPct(c.chg)}</div>` : '<div class="mc-chg d">—</div>'}
-  </div>`).join('');
-
-  loadSectorPerf();
-}
-
-async function loadSectorPerf() {
-  const d = await api('/sector-performance?days=30');
-  if (!d) return;
-  const rows = d.sector_performance || [];
-  if (!rows.length) {
-    $('sector-perf-wrap').innerHTML = emptyState('No sector data yet.');
-    return;
-  }
-  // dedupe to latest per sector
-  const latest = {};
-  rows.forEach(r => { if (!latest[r.sector] || r.date > latest[r.sector].date) latest[r.sector] = r; });
-  const sorted = Object.values(latest).sort((a,b) => (b.sector_return||0) - (a.sector_return||0));
-
-  $('sector-perf-wrap').innerHTML = `<div class="card" style="padding:0;overflow:auto">
-    <table class="tbl">
-      <thead><tr><th>Sector</th><th>Return</th><th>Macro Alignment</th><th>Top Company</th><th>Date</th></tr></thead>
-      <tbody>${sorted.map(r => `<tr>
-        <td style="font-weight:500">${r.sector||'—'}</td>
-        <td class="${cls(r.sector_return)}">${fmtPct(r.sector_return)}</td>
-        <td><span class="tag ${r.macro_alignment==='MACRO_ALIGNED'?'tag-pass':r.macro_alignment==='MACRO_DIVERGENT'?'tag-excl':'tag-neutral'}">${(r.macro_alignment||'—').replace(/_/g,' ')}</span></td>
-        <td class="m">${r.top_company||'—'}</td>
-        <td class="d">${r.date||'—'}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
-}
-
-// ── ALPHA FULL ─────────────────────────────────────────────────────────────
-function renderAlphaFull() {
-  const a = S.alpha?.alpha;
-  if (!a) {
-    $('alpha-full-table').innerHTML = emptyState('No alpha data. Run pipeline first.');
-    return;
-  }
-  const entries = Object.entries(a).sort((x,y) => y[1].alpha_score - x[1].alpha_score);
-  $('alpha-section-badge').textContent = `${entries.filter(([,d])=>!d.excluded).length} Active / ${entries.length} Total`;
-
-  $('alpha-full-table').innerHTML = `<table class="tbl" style="min-width:700px">
-    <thead><tr><th>Rank</th><th>Subsector</th><th>Alpha</th><th>Bar</th><th>Mom</th><th>MRev</th><th>Vol</th><th>Macro</th><th>Mom%</th><th>Status</th></tr></thead>
-    <tbody>${entries.map(([sub,d]) => {
-      const rb = d.signal_rank===1?'gold':d.signal_rank===2?'silver':d.signal_rank===3?'bronze':'';
-      const bc = d.excluded ? 'var(--red)' : d.alpha_score > 0.75 ? 'var(--green)' : 'var(--amber)';
-      return `<tr>
-        <td><span class="rank-badge ${rb}">${d.signal_rank}</span></td>
-        <td style="font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub}</td>
-        <td class="${d.alpha_score>=0.6?'g':d.alpha_score>=0.4?'a':'r'}" style="font-weight:600">${fmt(d.alpha_score,3)}</td>
-        <td><div class="alpha-bar" style="width:80px"><div class="alpha-bar-fill" style="width:${(d.alpha_score*100).toFixed(1)}%;background:${bc}"></div></div></td>
-        <td class="d">${fmt(d.momentum,3)}</td>
-        <td class="d">${fmt(d.mean_reversion,3)}</td>
-        <td class="d">${fmt(d.vol_breakout,3)}</td>
-        <td class="d">${fmt(d.macro_alignment,3)}</td>
-        <td class="${cls(d.raw_momentum_pct)}">${d.raw_momentum_pct>=0?'+':''}${fmt(d.raw_momentum_pct)}%</td>
-        <td><span class="tag ${d.excluded?'tag-excl':'tag-pass'}">${d.excluded?'EXCL':'PASS'}</span></td>
-      </tr>`;
-    }).join('')}</tbody></table>`;
-}
-
-// ── PORTFOLIO SECTION ──────────────────────────────────────────────────────
-async function renderPortSection(h) {
-  if (!S.portfolio[h]) await loadPortfolio(h);
-  const pData = S.portfolio[h];
-  const p = pData?.portfolio;
-  if (!p) {
-    $('port-full-list').innerHTML = emptyState('Run pipeline first.');
-    return;
-  }
-
-  const allocs = Object.entries(p)
-    .filter(([k,v]) => typeof v==='object' && v!==null && (v.weight||0) > 0.001)
-    .sort((a,b) => b[1].weight - a[1].weight);
-
-  $('port-full-list').innerHTML = allocs.map(([sec, data], i) => `
-    <div class="port-row">
-      <div class="port-dot" style="background:${PALETTE[i]}"></div>
-      <div style="flex:1;min-width:0">
-        <div class="port-name">${sec}</div>
-        <div class="port-sub">Conf: ${fmt(data.confidence_score)} | ${data.risk_category||'—'}</div>
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div class="port-wt" style="color:${PALETTE[i]}">${((data.weight||0)*100).toFixed(1)}%</div>
-        <div style="font-size:9px;color:var(--text-3);font-family:var(--mono);margin-top:1px">${fmtPct(data.expected_return)}</div>
-        <div class="port-bar"><div class="port-bar-fill" style="width:${((data.weight||0)*100).toFixed(1)}%;background:${PALETTE[i]}"></div></div>
-      </div>
-    </div>`).join('');
-
-  buildDonut('donut2', 'dc2-val', h, '_d2');
-
-  // Risk constraints — FIX: risk_adjustments is in p directly (not nested)
-  const risk = p.risk_adjustments || {};
-  $('port-risk-panel').innerHTML = [
-    { label:'VIX Guard',    val:risk.vix_guard || 'NORMAL' },
-    { label:'Drawdown Rule',val:risk.drawdown_rule || 'OK' },
-    { label:'Vol Cap',      val:risk.portfolio_vol_cap || 'OK' },
-    { label:'FII Rule',     val:risk.fii_rule || 'OK' },
-    { label:'Max Position', val:'28%' },
-    { label:'Min Position', val:'6%' },
-  ].map(r => `<div class="risk-row">
-    <span class="risk-label">${r.label}</span>
-    <span class="tag ${r.val==='OK'||r.val==='NORMAL'?'tag-pass':r.val.includes('ELEVATED')||r.val.includes('HIGH')?'tag-excl':'tag-amber'}">${r.val}</span>
-  </div>`).join('');
-}
-
-async function switchPortSection(h, btn) {
-  $('port-section-tabs').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  await renderPortSection(h);
-}
-
-// ── FORECASTS ──────────────────────────────────────────────────────────────
-function renderForecasts(filter) {
-  S.fcFilter = filter;
-  const fc = S.forecasts?.forecasts;
-  if (!fc) {
-    $('forecasts-grid').innerHTML = emptyState('No forecasts. Run pipeline first.');
-    return;
-  }
-  const filtered = filter === 'all' ? fc : fc.filter(f => f.horizon === filter);
-  $('forecasts-grid').innerHTML = filtered.map(f => `
-    <div class="fc">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
-        <div>
-          <div class="fc-name">${f.sector || f.subsector || '—'}</div>
-          <div class="fc-horizon">${f.horizon}</div>
-        </div>
-        <span class="tag ${(f.opportunity_score||5)>=7?'tag-amber':(f.opportunity_score||5)>=5?'tag-pass':'tag-neutral'}">OPP ${(f.opportunity_score||0).toFixed(1)}</span>
-      </div>
-      <div class="fc-returns">
-        <div class="fc-ret-col"><div class="fc-ret-lbl">BEAR</div><div class="fc-ret-val r">${fmtPct(f.bear_case_return,1)}</div></div>
-        <div class="fc-ret-col"><div class="fc-ret-lbl">BASE</div><div class="fc-ret-val ${cls(f.base_case_return)}">${fmtPct(f.base_case_return,1)}</div></div>
-        <div class="fc-ret-col"><div class="fc-ret-lbl">BULL</div><div class="fc-ret-val g">${fmtPct(f.bull_case_return,1)}</div></div>
-      </div>
-      <div class="fc-conf-bar"><div class="fc-conf-fill" style="width:${((f.confidence_score||0)*100).toFixed(1)}%"></div></div>
-      <div class="fc-meta">
-        <span>Conf: ${fmt(f.confidence_score)}</span>
-        <span>${f.generated_date||'—'}</span>
-      </div>
-      ${f.primary_catalyst ? `<div class="fc-catalyst">${f.primary_catalyst.slice(0,90)}${f.primary_catalyst.length>90?'…':''}</div>` : ''}
-    </div>`).join('');
-}
-
-function filterForecasts(f, btn) {
-  $('fc-filter-tabs').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderForecasts(f);
-}
-
-// ── BACKTEST ───────────────────────────────────────────────────────────────
-async function loadBacktest(years, btn) {
-  if (btn) {
-    $('bt-tabs').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-  }
-  $('bt-metrics').innerHTML = '<div class="skel" style="height:76px;border-radius:var(--r-lg)"></div>'.repeat(4);
-
-  if (!S.backtest || S.backtest._years !== years) {
-    const d = await api(`/backtest?years=${years}`);
-    if (!d) { toast('Backtest unavailable', 'error'); return; }
-    S.backtest = d.backtest;
-    if (S.backtest) S.backtest._years = years;
-  }
-
-  const bt = S.backtest;
-  if (!bt || bt.status !== 'ok') {
-    $('bt-metrics').innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>${bt?.message||'No backtest data yet.'}</p></div>`;
-    return;
-  }
-
-  const m = bt.metrics || {};
-  const kpis = [
-    { label:'Portfolio Annualised', val:fmtPct(m.portfolio_annualised_return_pct), cls:cls(m.portfolio_annualised_return_pct) },
-    { label:'Average Alpha',        val:fmtPct(m.average_alpha_pct),               cls:cls(m.average_alpha_pct) },
-    { label:'Sharpe Ratio',         val:fmt(m.sharpe_ratio,3),                      cls:(m.sharpe_ratio||0)>=0.8?'g':'a' },
-    { label:'Max Drawdown',         val:fmt(m.max_drawdown_pct)+'%',               cls:'r' },
-    { label:'Win Rate',             val:fmt(m.win_rate_pct,1)+'%',                 cls:(m.win_rate_pct||0)>=55?'g':'a' },
-    { label:'Info Ratio',           val:fmt(m.information_ratio,3),                cls:'b' },
-    { label:'NIFTY Benchmark',      val:fmtPct(m.nifty_annualised_return_pct),     cls:cls(m.nifty_annualised_return_pct) },
-    { label:'Periods',              val:m.n_periods||'—',                           cls:'' },
-  ];
-  $('bt-metrics').innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:11px;grid-column:1/-1">
-    ${kpis.map(x => `<div class="kpi-card">
-      <div class="kpi-label">${x.label}</div>
-      <div class="kpi-val ${x.cls}" style="font-size:19px">${x.val}</div>
-    </div>`).join('')}
-  </div>`;
-
-  const ec = bt.equity_curve || [];
-  if (ec.length && $('eq-chart')) {
-    if (_eq) _eq.destroy();
-    _eq = new Chart($('eq-chart').getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: ec.map(p => p.date || p[0] || ''),
-        datasets: [
-          { label:'Portfolio', data:ec.map(p => p.portfolio_value||p[1]||1), borderColor:'var(--green)', backgroundColor:'rgba(0,200,122,0.07)', borderWidth:2, fill:true, pointRadius:0, tension:0.3 },
-          { label:'NIFTY',     data:ec.map(p => p.nifty_value||p[2]||1),     borderColor:'var(--blue)',  backgroundColor:'rgba(59,130,246,0.04)',  borderWidth:1.5, fill:true, pointRadius:0, tension:0.3, borderDash:[5,4] },
-        ],
-      },
-      options: {
-        responsive:true, maintainAspectRatio:false,
-        scales: {
-          x: { grid:{color:'rgba(27,45,68,0.7)'}, ticks:{color:'var(--text-3)',font:{family:'IBM Plex Mono',size:9},maxTicksLimit:8} },
-          y: { grid:{color:'rgba(27,45,68,0.7)'}, ticks:{color:'var(--text-3)',font:{family:'IBM Plex Mono',size:9},callback:v=>v.toFixed(2)+'×'} },
-        },
-        plugins: {
-          legend:{labels:{color:'var(--text-2)',font:{family:'IBM Plex Mono',size:10},boxWidth:14}},
-          tooltip:{backgroundColor:'#131f30',titleColor:'#7a90aa',bodyColor:'#d0dae8',borderColor:'#1b2d44',borderWidth:1},
-        },
-        interaction:{mode:'index',intersect:false},
-      },
+  // History charts
+  try{
+    const d=await fetch(`${API}/api/macro-history?days=30`).then(r=>r.json());
+    const h=d.macro_history||[]; if(!h.length) return;
+    const lb=h.map(x=>x.date.slice(5)),nc=h.map(x=>x.nifty_close),fi=h.map(x=>x.fii_net_crore||0),vx=h.map(x=>x.india_vix),cr=h.map(x=>x.brent_crude);
+    destroyChart('nifty-fii');
+    _ch['nifty-fii']=new Chart(document.getElementById('ch-nifty-fii').getContext('2d'),{
+      data:{labels:lb,datasets:[{type:'line',label:'NIFTY',data:nc,borderColor:'#00D4AA',borderWidth:2,fill:false,tension:.3,pointRadius:0,yAxisID:'y'},{type:'bar',label:'FII Cr',data:fi,backgroundColor:fi.map(v=>v>=0?'rgba(0,212,170,.3)':'rgba(255,71,87,.3)'),yAxisID:'y2'}]},
+      options:{...CX,scales:{x:CX.scales.x,y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>v.toLocaleString('en-IN',{maximumFractionDigits:0})}},y2:{position:'right',grid:{display:false},ticks:{color:'#4A5568',font:{size:10}}}}}
     });
-  }
+    destroyChart('vix-crude');
+    _ch['vix-crude']=new Chart(document.getElementById('ch-vix-crude').getContext('2d'),{
+      data:{labels:lb,datasets:[{type:'line',label:'VIX',data:vx,borderColor:'#FFB800',borderWidth:2,fill:false,tension:.3,pointRadius:0,yAxisID:'y'},{type:'line',label:'Crude',data:cr,borderColor:'#FF6B35',borderWidth:2,fill:false,tension:.3,pointRadius:0,yAxisID:'y2'}]},
+      options:{...CX,scales:{x:CX.scales.x,y:CX.scales.y,y2:{position:'right',grid:{display:false},ticks:{color:'#4A5568',font:{size:10}}}}}
+    });
+  }catch(e){}
 }
 
-// ── PERFORMANCE ────────────────────────────────────────────────────────────
-function renderPerformance() {
-  const p = S.performance?.performance;
-  if (!p || p.status === 'no_data') {
-    $('perf-kpis').innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>${p?.message||'No performance data yet.'}</p></div>`;
-    return;
-  }
-  const o = p.overall || {};
-  $('perf-kpis').innerHTML = [
-    { label:'Direction Accuracy', val:`${fmt(o.direction_accuracy_pct,1)}%`, cls:(o.direction_accuracy||0)>=0.6?'g':'a' },
-    { label:'MAE',                val:`${fmt(o.mae_pct)}%`,                  cls:'d' },
-    { label:'RMSE',               val:`${fmt(o.rmse_pct)}%`,                 cls:'d' },
-    { label:'Forecasts Evaluated',val:o.n_forecasts??'—',                    cls:'' },
-  ].map(k=>`<div class="kpi-card"><div class="kpi-label">${k.label}</div><div class="kpi-val ${k.cls}" style="font-size:21px">${k.val}</div></div>`).join('');
+// ─────────────────────────────────────────────────────────────────
+// SECTORS
+// ─────────────────────────────────────────────────────────────────
+async function loadSectors(){
+  const NWTS={'Banking & Financial Services':38,'IT & Technology':15,'Energy & Oil & Gas':13,'Pharmaceuticals':5,'Consumer Goods & Retail':10,'Automobiles':7,'Infrastructure & Real Estate':7};
+  const DRVS={'Banking & Financial Services':'repo_rate','IT & Technology':'usdinr','Energy & Oil & Gas':'brent_crude','Pharmaceuticals':'usdinr','Consumer Goods & Retail':'gdp_growth','Automobiles':'repo_rate','Infrastructure & Real Estate':'repo_rate'};
+  try{
+    const d=await fetch(`${API}/api/sector-performance?days=1`).then(r=>r.json());
+    // ROOT: d.sector_performance = [{date,sector,subsector,sector_return,subsector_return,macro_alignment,regime_label}]
+    const rows=d.sector_performance||[];
+    const byS={};
+    rows.forEach(r=>{ if(!byS[r.sector]) byS[r.sector]={ret:0,contrib:0,align:r.macro_alignment,n:0}; byS[r.sector].ret+=(r.sector_return||0); byS[r.sector].contrib+=(r.subsector_return||0); byS[r.sector].n++; });
+    const secs=Object.entries(byS).sort((a,b)=>Math.abs(b[1].contrib/b[1].n)-Math.abs(a[1].contrib/a[1].n));
+    const maxA=Math.max(...secs.map(([,v])=>Math.abs(v.contrib/v.n)));
+    document.getElementById('sector-conf').textContent=`${secs.length} sectors · ${rows[0]?.date||'today'}`;
+    document.getElementById('sector-tbody').innerHTML=secs.map(([s,v])=>{
+      const ret=v.ret/v.n, contrib=v.contrib/v.n, bp=maxA>0?Math.abs(contrib)/maxA*100:0;
+      const al=v.align||'', aligned=al.includes('ALIGNED');
+      return `<tr><td style="font-weight:500">${s}</td><td class="r" style="font-family:var(--mono);color:var(--text2)">${NWTS[s]||0}%</td><td class="r" style="font-family:var(--mono);${cs(ret)}">${pct(ret,2,true)}</td><td class="r" style="font-family:var(--mono);${cs(contrib)}">${pct(contrib,4,true)}</td><td><div class="bar-track" style="width:80px"><div class="bar-fill ${contrib>=0?'g':'r'}" style="width:${bp}%"></div></div></td><td><span class="badge ${aligned?'g':'r'}">${aligned?'✓ ALIGNED':'⚠ DIVERGENT'}</span></td><td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${DRVS[s]||'—'}</td><td class="r">${arr(ret)}</td></tr>`;
+    }).join('');
+  }catch(e){document.getElementById('sector-tbody').innerHTML='<tr><td colspan="8" class="empty">Run pipeline first</td></tr>';}
 
-  const bh = p.by_horizon || {};
-  $('perf-by-horizon').innerHTML = !Object.keys(bh).length ? emptyState('No horizon data yet.') :
-    `<table class="tbl">
-      <thead><tr><th>Horizon</th><th>N</th><th>Dir Acc</th><th>MAE</th><th>Bias</th></tr></thead>
-      <tbody>${Object.entries(bh).sort().map(([h,m])=>`<tr>
-        <td><span class="tag tag-blue">${h}</span></td>
-        <td class="d">${m.n_forecasts}</td>
-        <td class="${(m.direction_accuracy||0)>=0.6?'g':'a'}">${fmt(m.direction_accuracy_pct,1)}%</td>
-        <td class="d">${fmt(m.mae_pct)}%</td>
-        <td class="${cls(m.bias_pct)}">${fmtPct(m.bias_pct)}</td>
-      </tr>`).join('')}</tbody>
-    </table>`;
+  try{
+    const d=await fetch(`${API}/api/sector-performance?days=30`).then(r=>r.json());
+    const rows=d.sector_performance||[];
+    const CLR={'Banking & Financial Services':'#00D4AA','IT & Technology':'#0099FF','Energy & Oil & Gas':'#FF6B35','Pharmaceuticals':'#9B59FF','Consumer Goods & Retail':'#FFB800','Automobiles':'#FF4757','Infrastructure & Real Estate':'#2ECC71'};
+    const dates=[...new Set(rows.map(r=>r.date))].sort().slice(-20);
+    const secs=[...new Set(rows.map(r=>r.sector))];
+    const bySd={};
+    rows.forEach(r=>{const k=`${r.date}|${r.sector}`;if(!bySd[k])bySd[k]={s:0,n:0};bySd[k].s+=(r.sector_return||0);bySd[k].n++;});
+    const datasets=secs.slice(0,7).map(s=>({label:s.split(' ')[0],data:dates.map(d=>{const k=`${d}|${s}`;return bySd[k]?bySd[k].s/bySd[k].n:null;}),borderColor:CLR[s]||'#4A5568',backgroundColor:'transparent',borderWidth:1.5,tension:.3,pointRadius:0,spanGaps:true}));
+    destroyChart('sect-hist');
+    _ch['sect-hist']=new Chart(document.getElementById('ch-sector-hist').getContext('2d'),{type:'line',data:{labels:dates.map(d=>d.slice(5)),datasets},options:{...CX,scales:{x:CX.scales.x,y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>v.toFixed(1)+'%'}}}}});
+  }catch(e){}
 
-  const bs = p.by_sector || {};
-  const sorted = Object.entries(bs).sort((a,b)=>b[1].hit_ratio_pct-a[1].hit_ratio_pct);
-  $('perf-by-sector').innerHTML = !sorted.length ? emptyState('No sector data yet.') :
-    sorted.map(([sec,m])=>`<div class="port-row">
-      <div style="flex:1;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sec}</div>
-      <span class="tag ${m.grade==='A'?'tag-pass':m.grade==='B'?'tag-amber':'tag-excl'}" style="flex-shrink:0">${m.grade}</span>
-      <div class="port-bar" style="width:70px;flex-shrink:0">
-        <div class="port-bar-fill" style="width:${m.hit_ratio_pct}%;background:${(m.hit_ratio_pct||0)>=65?'var(--green)':(m.hit_ratio_pct||0)>=55?'var(--amber)':'var(--red)'}"></div>
-      </div>
-      <div style="font-family:var(--mono);font-size:11px;width:40px;text-align:right;flex-shrink:0">${fmt(m.hit_ratio_pct,1)}%</div>
-    </div>`).join('');
-}
-
-// ── INSIGHTS ───────────────────────────────────────────────────────────────
-function renderInsights() {
-  const ins = S.insights?.insights;
-  if (!ins || !ins.length) {
-    $('insights-list').innerHTML = emptyState('No insights yet. Run daily pipeline first.');
-    return;
-  }
-  $('insights-list').innerHTML = ins.map(i => `
-    <div class="insight">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
-        <div class="ins-meta" style="margin-bottom:0">
-          <span>📅 ${i.date}</span>
-          ${i.top_sector ? `<span>Top: <span class="b">${i.top_sector}</span></span>` : ''}
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="mono ${cls(i.nifty_return)}" style="font-size:12px;font-weight:600">${fmtPct(i.nifty_return)}</span>
-          <span class="regime-badge ${regClass(i.regime_label)}">${(i.regime_label||'—').replace(/_/g,' ')}</span>
-        </div>
-      </div>
-      ${i.what_text    ? `<div class="ins-section-title">What Happened</div><div class="ins-text">${i.what_text}</div>`    : ''}
-      ${i.why_text     ? `<div class="ins-section-title">Why It Moved</div><div class="ins-text">${i.why_text}</div>`      : ''}
-      ${i.implication  ? `<div class="ins-section-title">Implication</div><div class="ins-text">${i.implication}</div>`   : ''}
-      ${i.regime_context? `<div class="ins-section-title">Regime Context</div><div class="ins-text">${i.regime_context}</div>`: ''}
-    </div>`).join('');
-}
-
-// ── PIPELINE TRIGGER ───────────────────────────────────────────────────────
-async function triggerPipeline() {
-  const btn = $('run-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner"></div> Running…';
-  const r = await api('/run/daily', 'POST');
-  if (r?.status === 'ok') {
-    toast('Daily pipeline started in background', 'success');
-    pollJob();
-  } else {
-    toast(r?.message || 'Could not start pipeline', 'error');
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>Run Pipeline';
-  }
-}
-
-function pollJob() {
-  const iv = setInterval(async () => {
-    const d = await api('/run/status');
-    if (!d?.job?.running) {
-      clearInterval(iv);
-      const btn = $('run-btn');
-      btn.disabled = false;
-      btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>Run Pipeline';
-      toast('Pipeline complete — refreshing…', 'success');
-      setTimeout(loadAll, 1500);
+  try{
+    const d=await fetch(`${API}/api/sectors`).then(r=>r.json());
+    const secs = d.sectors || {};
+    const el = document.getElementById('sector-class');
+    if(!Object.keys(secs).length) { el.innerHTML='<div class="empty">No classification data</div>'; }
+    else {
+      const totalCos=Object.values(secs).reduce((s,v)=>s+Object.values(v.subsectors_details||{}).reduce((s2,sub)=>s2+Object.keys(sub.companies||{}).length,0),0);
+      const totalSubs=Object.values(secs).reduce((s,v)=>s+(v.subsectors||[]).length,0);
+      let h='<div style="font-size:11px;color:var(--text3);margin-bottom:10px;font-family:var(--mono)">'+Object.keys(secs).length+' Sectors · '+totalSubs+' Subsectors · '+totalCos+' Companies</div>';
+      Object.entries(secs).sort((a,b)=>b[1].nifty_weight-a[1].nifty_weight).forEach(([s,v])=>{
+        const det=v.subsectors_details||{};
+        const subCount=Object.keys(det).length;
+        const compCount=Object.values(det).reduce((sum,sub)=>sum+Object.keys(sub.companies||{}).length,0);
+        let subsHtml='';
+        Object.entries(det).forEach(([subName,subData])=>{
+          const comps=Object.entries(subData.companies||{});
+          const compRows=comps.map(([cName,cData])=>'<tr><td style="color:var(--text)">'+cName+'</td><td style="font-family:var(--mono);color:var(--yellow)">'+(cData.ticker||'—')+'</td><td style="font-family:var(--mono);text-align:right">'+(cData.index_weight!=null?cData.index_weight.toFixed(2)+'%':'—')+'</td></tr>').join('');
+          subsHtml+='<div class="subsector-node"><div class="subsector-header" onclick="this.parentElement.classList.toggle(\'open\')"><div style="display:flex;align-items:center;gap:6px"><span class="subsector-toggle-icon">▼</span><span style="font-size:11px;font-weight:500;color:var(--text)">'+subName+'</span><span class="badge y" style="font-size:9px">'+comps.length+'</span></div><span style="font-family:var(--mono);font-size:10px;color:var(--text3)">'+(subData.subsector_weight_in_sector||0)+'%</span></div><div class="subsector-content"><table class="company-table"><thead><tr><th>Company</th><th>Ticker</th><th style="text-align:right">NIFTY Wt</th></tr></thead><tbody>'+(compRows||'<tr><td colspan="3" class="empty">—</td></tr>')+'</tbody></table></div></div>';
+        });
+        h+='<div class="sector-node"><div class="sector-header" onclick="this.parentElement.classList.toggle(\'open\')"><div class="sector-title-wrapper"><span class="sector-toggle-icon">▶</span><span style="font-size:13px;font-weight:600">'+s+'</span><span class="badge g" style="font-size:9px">'+subCount+' sub · '+compCount+' cos</span></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">'+(v.macro_drivers||[]).join(', ')+'</span><span style="font-family:var(--mono);color:var(--green);font-size:12px;font-weight:700">'+v.nifty_weight+'%</span></div></div><div class="sector-content">'+subsHtml+'</div></div>';
+      });
+      el.innerHTML=h;
     }
-  }, 3000);
+  }catch(e){document.getElementById('sector-class').innerHTML='<div class="empty">Classification unavailable</div>';}
 }
 
-// ── EMPTY STATE ────────────────────────────────────────────────────────────
-function emptyState(msg) {
-  return `<div class="empty-state">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-    <p>${msg}</p>
-  </div>`;
+// ─────────────────────────────────────────────────────────────────
+// ALPHA
+// ─────────────────────────────────────────────────────────────────
+async function loadAlpha(){
+  try{
+    const d=await fetch(`${API}/api/alpha`).then(r=>r.json());
+    // ROOT: d.alpha = {subsector_name:{alpha_score,momentum,mean_reversion,vol_breakout,macro_alignment,signal_rank,excluded}}
+    const alpha=d.alpha||{};
+    const entries=Object.entries(alpha).sort((a,b)=>a[1].signal_rank-b[1].signal_rank);
+    const active=entries.filter(([,v])=>!v.excluded).length;
+    document.getElementById('alpha-sum').textContent=`Scored:${entries.length} Active:${active} Excl:${entries.length-active}`;
+    document.getElementById('alpha-rows').innerHTML=entries.map(([sub,sc])=>`
+      <div class="ar" style="${sc.excluded?'opacity:.45':''}">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center">${sc.signal_rank}</span>
+        <div><div style="font-size:12px;font-weight:500">${sub}</div></div>
+        <span class="mono" style="${cs(sc.alpha_score-.5)}">${f(sc.alpha_score,3)}</span>
+        <span class="mono">${f(sc.momentum,3)}</span>
+        <span class="mono">${f(sc.mean_reversion,3)}</span>
+        <span class="mono">${f(sc.vol_breakout,3)}</span>
+        <span class="mono">${f(sc.macro_alignment,3)}</span>
+        <span class="badge ${sc.excluded?'y':'g'}">${sc.excluded?'EXCL':'PASS'}</span>
+      </div>`).join('');
+  }catch(e){document.getElementById('alpha-rows').innerHTML='<div class="empty">Alpha unavailable — run pipeline first</div>';}
 }
 
-// ── INIT ───────────────────────────────────────────────────────────────────
-async function init() {
-  $('topbar-date').textContent = new Date().toLocaleDateString('en-IN', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
-  const health = await api('/healthcheck');
-  if (!health) {
-    setStatus('offline');
-    toast('API offline — start marketos_api.py first', 'error');
-    return;
-  }
-  setStatus('online');
-  await loadAll();
+// ─────────────────────────────────────────────────────────────────
+// FORECASTS
+// ─────────────────────────────────────────────────────────────────
+async function loadForecasts(){
+  try{
+    const d=await fetch(`${API}/api/forecasts`).then(r=>r.json());
+    // ROOT: d.forecasts = [{sector,subsector,horizon,base_case_return,bull_case_return,bear_case_return,confidence_score,opportunity_score}]
+    _fcData=d.forecasts||[];
+    renderFc('1M');
+  }catch(e){document.getElementById('fc-rows').innerHTML='<div class="empty">Run pipeline first</div>';}
+}
+function setFcTab(h,btn){document.querySelectorAll('#sec-forecasts .tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderFc(h);}
+function renderFc(h){
+  const rows=_fcData.filter(r=>r.horizon===h).sort((a,b)=>(b.opportunity_score||0)-(a.opportunity_score||0)).slice(0,15);
+  const el=document.getElementById('fc-rows');
+  if(!rows.length){el.innerHTML='<div class="empty">No forecasts for this horizon</div>';return;}
+  el.innerHTML=rows.map((r,i)=>{
+    const base=r.base_case_return||0,bull=r.bull_case_return||0,bear=r.bear_case_return||0,conf=(r.confidence_score||0)*100,opp=r.opportunity_score||0;
+    return `<div style="border-bottom:1px solid var(--border)"><div class="fc-row" style="border-bottom:none"><span class="fc-rank">${i+1}</span><div><div style="font-size:12px;font-weight:500">${r.subsector||r.sector||'—'}</div><div style="font-size:10px;color:var(--text3)">${r.sector||''}</div></div><span class="fc-base ${cc(base)}">${pct(base,1,true)}</span><div style="text-align:right;font-family:var(--mono);font-size:11px"><span style="${cs(bull)}">${pct(bull,1,true)}</span><span style="color:var(--text3)"> / </span><span style="${cs(bear)}">${pct(bear,1,true)}</span><div class="bar-track" style="margin-top:3px"><div class="bar-fill b" style="width:${conf}%"></div></div><div style="font-size:10px;color:var(--text3)">${conf.toFixed(0)}% conf</div></div><div style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--text2)"><span style="color:var(--green)">${f(opp,1)}</span>/10</div></div>
+    <div style="padding:0 12px 10px 46px; font-size:11px; color:var(--text2); display:grid; grid-template-columns:1fr 1fr; gap:12px">
+      <div><strong style="color:var(--text3)">Catalyst:</strong> ${r.primary_catalyst||'—'}</div>
+      <div><strong style="color:var(--text3)">Risk:</strong> ${r.risk_factor||'—'}</div>
+    </div></div>`;
+  }).join('');
+}
 
-  // Auto-refresh topbar every 5 min
-  setInterval(async () => { await loadStatus(); updateTopBar(); }, 300000);
+// ─────────────────────────────────────────────────────────────────
+// PORTFOLIO
+// ROOT: d.portfolio = {positions:[{subsector,sector,weight,adjusted_weight,expected_return_pct,volatility_pct,alpha_score}], expected_return, portfolio_vol, sharpe_like, total_exposure_pct, regime_label, severity, rules_applied}
+// ─────────────────────────────────────────────────────────────────
+async function loadPortfolio(){
+  try{
+    const d=await fetch(`${API}/api/portfolio?horizon=${_portH}`).then(r=>r.json());
+    const p=d.portfolio||{};
+    const positions=p.positions||p.allocations||[];
+    const rules=p.rules_applied||p.risk_rules_applied||[];
 
-  // Light polling for overview
-  setInterval(async () => {
-    await loadStatus();
-    if (S.section === 'overview') {
-      await loadMacro(); await loadAlpha();
-      renderMacroCards(); renderAlphaTable(); renderPerfKPIs();
+    document.getElementById('port-metrics').innerHTML=[
+      {l:'Expected Return',v:pct(p.expected_return_pct||p.expected_return,1,true),s:cs(p.expected_return_pct||p.expected_return)},
+      {l:'Portfolio Vol',  v:pct(p.portfolio_vol_pct||p.portfolio_vol,1),s:''},
+      {l:'Sharpe (est.)', v:f(p.sharpe_like,3),s:''},
+      {l:'Total Exposure', v:pct((p.total_exposure_pct||1)*100,1),s:''},
+      {l:'Cash Buffer',    v:pct((p.cash_pct||0)*100,1),s:'color:var(--text2)'},
+      {l:'Regime',         v:p.regime_label||'—',s:''},
+      {l:'Severity',       v:p.severity||'—',s:''},
+    ].map(m=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">${m.l}</span><span style="font-family:var(--mono);font-weight:500;${m.s}">${m.v}</span></div>`).join('');
+
+    const el=document.getElementById('port-rows');
+    if(!positions.length){el.innerHTML='<div class="empty">No positions — run pipeline first</div>';return;}
+    const maxW=Math.max(...positions.map(p=>(p.adjusted_weight||p.weight||0)));
+    el.innerHTML=positions.map(pos=>{
+      const w=(pos.weight||0)*100,aw=(pos.adjusted_weight||pos.weight||0)*100,ret=pos.expected_return_pct||pos.base_case_return||0,vol=pos.volatility_pct||pos.volatility||0,bw=maxW>0?aw/(maxW*100)*100:0;
+      return `<div class="pr"><div><div style="font-size:12px;font-weight:500">${pos.subsector||pos.sector||'—'}</div><div style="font-size:10px;color:var(--text3)">${pos.sector||''}</div><div class="bar-track" style="margin-top:4px"><div class="bar-fill g" style="width:${bw}%"></div></div></div><span style="font-family:var(--mono);font-size:11px;text-align:right;color:var(--text2)">${pct(w,1)}</span><span style="font-family:var(--mono);font-size:12px;text-align:right;color:var(--green)">${pct(aw,1)}</span><span style="font-family:var(--mono);font-size:12px;text-align:right;${cs(ret)}">${pct(ret,1,true)}</span><span style="font-family:var(--mono);font-size:11px;text-align:right;color:var(--text2)">${pct(vol,1)}</span><span style="font-family:var(--mono);font-size:11px;text-align:right;${cs(pos.alpha_score)}">${f(pos.alpha_score,2)}</span></div>`;
+    }).join('');
+
+    destroyChart('donut');
+    const CLR=['#00D4AA','#0099FF','#FF6B35','#9B59FF','#FFB800','#FF4757','#2ECC71'];
+    _ch['donut']=new Chart(document.getElementById('ch-donut').getContext('2d'),{type:'doughnut',
+      data:{labels:positions.map(p=>p.subsector||p.sector),datasets:[{data:positions.map(p=>((p.adjusted_weight||p.weight||0)*100).toFixed(1)),backgroundColor:CLR.slice(0,positions.length),borderColor:'#0F1217',borderWidth:2}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{position:'right',labels:{color:'#8B97A8',font:{size:10},boxWidth:10,padding:8}}}}
+    });
+
+    const rEl=document.getElementById('risk-rules');
+    rEl.innerHTML=rules.length?rules.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2)">${r}</div>`).join(''):'<div style="font-size:12px;color:var(--text3);padding:8px 0">No risk rules fired today</div>';
+  }catch(e){document.getElementById('port-rows').innerHTML='<div class="empty">Portfolio unavailable — run pipeline first</div>';}
+}
+function setPortTab(h,btn){_portH=h;document.querySelectorAll('#sec-portfolio .tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');loadPortfolio();}
+
+// ─────────────────────────────────────────────────────────────────
+// BACKTEST
+// ROOT: d.backtest = {status,metrics:{portfolio_annualised_return_pct,nifty_annualised_return_pct,net_alpha_pct,sharpe_ratio,max_drawdown_pct,information_ratio,...},equity_curve:[{date,portfolio_cumulative,nifty_cumulative}],period_returns:[{date,alpha,...}]}
+// ─────────────────────────────────────────────────────────────────
+async function loadBt(yrs,btn){
+  _btYrs=yrs;
+  if(btn){document.querySelectorAll('#sec-backtest .tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
+  try{
+    const d=await fetch(`${API}/api/backtest?years=${yrs}`).then(r=>r.json());
+    const bt=d.backtest||{}, m=bt.metrics||{};
+    document.getElementById('bt-sub').textContent=`${yrs}-year · ${bt.actual_rebalances||bt.n_periods||'—'} periods · 0.2% cost`;
+    const pr=m.portfolio_annualised_return_pct,nr=m.nifty_annualised_return_pct,al=m.net_alpha_pct,sh=m.sharpe_ratio,dd=m.max_drawdown_pct,ir=m.information_ratio;
+    document.getElementById('bt-ret').textContent   =pr!=null?pct(pr,2,true):'—';
+    document.getElementById('bt-nifty').textContent =nr!=null?pct(nr,2,true):'—';
+    document.getElementById('bt-alpha').textContent =al!=null?pct(al,2,true):'—';
+    document.getElementById('bt-sharpe').textContent=sh!=null?f(sh,3):'—';
+    document.getElementById('bt-dd').textContent    =dd!=null?pct(dd,2):'—';
+    document.getElementById('bt-ir').textContent    =ir!=null?f(ir,3):'—';
+    if(sh!=null) document.getElementById('bt-sharpe').className='bm-v '+(sh>=.8?'g':sh>=.5?'y':'r');
+    if(dd!=null) document.getElementById('bt-dd').className='bm-v '+(dd>=-14?'g':dd>=-20?'y':'r');
+    if(ir!=null) document.getElementById('bt-ir').className='bm-v '+(ir>=1?'g':ir>=.5?'y':'n');
+
+    document.getElementById('bt-targets').innerHTML=[
+      {l:'Sharpe > 0.8', ok:sh>=.8,  v:sh!=null?f(sh,3):'—'},
+      {l:'MaxDD > -14%', ok:dd>=-14, v:dd!=null?pct(dd,1):'—'},
+      {l:'Alpha > 5%',   ok:al>=5,   v:al!=null?pct(al,1,true):'—'},
+      {l:'Return 12-16%',ok:pr>=12&&pr<=16,v:pr!=null?pct(pr,1,true):'—'},
+      {l:'IR > 1.0',     ok:ir>=1,   v:ir!=null?f(ir,3):'—'},
+    ].map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span>${t.ok?'✅':'❌'} ${t.l}</span><span style="font-family:var(--mono);${t.ok?'color:var(--green)':'color:var(--text3)'}">${t.v}</span></div>`).join('');
+
+    const curve=bt.equity_curve||[];
+    if(curve.length){
+      destroyChart('equity');
+      _ch['equity']=new Chart(document.getElementById('ch-equity').getContext('2d'),{type:'line',
+        data:{labels:curve.map(c=>(c.date||'').slice(0,7)),datasets:[
+          {label:'Portfolio',data:curve.map(c=>c.portfolio_cumulative||c.portfolio||1),borderColor:'#00D4AA',borderWidth:2,fill:false,tension:.3,pointRadius:0},
+          {label:'NIFTY',    data:curve.map(c=>c.nifty_cumulative||c.nifty||1),borderColor:'#4A5568',borderWidth:1.5,fill:false,tension:.3,pointRadius:0,borderDash:[4,3]}
+        ]},
+        options:{...CX,scales:{x:CX.scales.x,y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>(v*100-100).toFixed(0)+'%'}}}}
+      });
     }
-  }, POLL);
+    const prs=bt.period_returns||[];
+    if(prs.length){
+      const alphas=prs.map(p=>p.alpha||p.port_alpha||0);
+      destroyChart('periods');
+      _ch['periods']=new Chart(document.getElementById('ch-periods').getContext('2d'),{type:'bar',
+        data:{labels:prs.map((p,i)=>p.date?(p.date+'').slice(0,7):`P${i+1}`),datasets:[{label:'Period Alpha',data:alphas,backgroundColor:alphas.map(a=>a>=0?'rgba(0,212,170,.4)':'rgba(255,71,87,.4)'),borderColor:alphas.map(a=>a>=0?'#00D4AA':'#FF4757'),borderWidth:1}]},
+        options:{...CX,plugins:{legend:{display:false}},scales:{x:{...CX.scales.x,ticks:{...CX.scales.x.ticks,maxTicksLimit:10}},y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>v.toFixed(1)+'%'}}}}
+      });
+    }
+  }catch(e){console.warn('Backtest error',e);}
 }
 
-window.addEventListener('DOMContentLoaded', init);
+// ─────────────────────────────────────────────────────────────────
+// PERFORMANCE
+// ROOT: d.performance = {status,overall:{direction_accuracy_pct,mae_pct,n_forecasts,bias_pct},by_sector:{sectorName:{hit_ratio_pct,mae_pct,n_forecasts,grade}},nifty_benchmark:{period_days,annualised_return_pct,sharpe_ratio,max_drawdown_pct}}
+// ─────────────────────────────────────────────────────────────────
+async function loadPerformance(){
+  try{
+    const d=await fetch(`${API}/api/performance`).then(r=>r.json());
+    const pf=d.performance||{}, ov=pf.overall||{};
+    const acc=ov.direction_accuracy_pct;
+    document.getElementById('pf-acc').textContent =acc!=null?pct(acc,1):'—';
+    document.getElementById('pf-acc').className   ='sv '+(acc>=60?'up':acc>=50?'':'dn');
+    document.getElementById('pf-mae').textContent =ov.mae_pct!=null?pct(ov.mae_pct,2):'—';
+    document.getElementById('pf-n').textContent   =ov.n_forecasts||'—';
+    document.getElementById('pf-bias').textContent=ov.bias_pct!=null?pct(ov.bias_pct,3,true):'—';
+    document.getElementById('pf-bias-s').textContent=ov.bias_pct>0?'over-predicting':'under-predicting';
+    const secs=Object.entries(pf.by_sector||{}).sort((a,b)=>b[1].hit_ratio_pct-a[1].hit_ratio_pct);
+    document.getElementById('pf-sectors').innerHTML=secs.map(([s,m])=>`
+      <div class="perf-row"><div style="font-size:12px">${s}</div><span style="font-family:var(--mono);text-align:right;${cs(m.hit_ratio_pct-50)}">${pct(m.hit_ratio_pct,1)}</span><span style="font-family:var(--mono);text-align:right;color:var(--text2)">${pct(m.mae_pct,2)}</span><span style="font-family:var(--mono);text-align:right;color:var(--text3)">${m.n_forecasts}</span><div><span class="grade ${m.grade}">${m.grade}</span></div></div>`).join('');
+    const bm=pf.nifty_benchmark||{};
+    document.getElementById('pf-bench').innerHTML=[
+      {l:'Period',      v:(bm.period_days||'—')+' days'},
+      {l:'Ann. Return', v:pct(bm.annualised_return_pct,2,true),s:cs(bm.annualised_return_pct)},
+      {l:'Sharpe',      v:bm.sharpe_ratio!=null?f(bm.sharpe_ratio,3):'—'},
+      {l:'Max Drawdown',v:pct(bm.max_drawdown_pct,2)},
+    ].map(m=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">${m.l}</span><span style="font-family:var(--mono);font-weight:500;${m.s||''}">${m.v}</span></div>`).join('');
+  }catch(e){}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// INSIGHTS
+// ROOT: d.insights = [{date,full_insight,what_text,regime_label,regime_score,nifty_return,top_sector}]
+// ─────────────────────────────────────────────────────────────────
+async function loadInsights(){
+  try{
+    const d=await fetch(`${API}/api/insights?limit=7`).then(r=>r.json());
+    const ins=d.insights||[];
+    const el=document.getElementById('insights-list');
+    if(!ins.length){el.innerHTML='<div class="empty">No insights stored — run pipeline first</div>';return;}
+    // Today's narrative + forward insight (top row)
+    const today=ins[0];
+    const narEl=document.getElementById('insights-narrative');
+    const fwdEl=document.getElementById('insights-forward');
+    if(narEl&&today){
+      const narTxt=(today.full_insight||today.what_text||'—').replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--text)">$1</strong>').replace(/\n/g,'<br>');
+      narEl.innerHTML='<div class="ins-meta" style="margin-bottom:10px"><span class="ins-date">'+today.date+'</span><span class="chg '+cc(today.nifty_return)+'" style="font-size:11px">'+(today.nifty_return!=null?pct(today.nifty_return,2,true):'—')+'</span><span class="regime '+regimeCls(today.regime_label)+'" style="font-size:10px;padding:2px 8px">'+(today.regime_label||'NEUTRAL')+'</span></div>'+narTxt;
+    }
+    if(fwdEl&&today){
+      const fwd=today.forward_insight||'';
+      if(fwd){
+        const secColors={'NEAR-TERM':{b:'var(--green)',bg:'rgba(0,212,170,.04)'},'MEDIUM-TERM':{b:'var(--blue)',bg:'rgba(0,153,255,.04)'},'SECTORS TO MONITOR':{b:'var(--yellow)',bg:'rgba(255,184,0,.04)'},'MACRO TRIGGERS':{b:'var(--red)',bg:'rgba(255,71,87,.04)'}};
+        const parts=fwd.split(/\n\n+/);
+        let html='';
+        for(const p of parts){
+          const s=p.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--text)">$1</strong>').replace(/\n/g,'<br>');
+          let matched=false;
+          for(const [key,sty] of Object.entries(secColors)){
+            if(p.includes(key)){html+='<div style="margin:12px 0 6px;padding:8px 12px;border-left:3px solid '+sty.b+';background:'+sty.bg+';border-radius:0 6px 6px 0">'+s+'</div>';matched=true;break;}
+          }
+          if(!matched){
+            if(p.includes('Forward-Looking'))html+='<div style="margin-bottom:6px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text)">'+s+'</div>';
+            else if(p.startsWith('DISCLAIMER'))html+='<div style="margin-top:12px;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.02);font-size:10px;color:var(--text3);font-style:italic">'+s+'</div>';
+            else html+='<div style="margin-bottom:6px">'+s+'</div>';
+          }
+        }
+        fwdEl.innerHTML=html;
+      } else {
+        fwdEl.innerHTML='<div class="empty">No forward insight for today</div>';
+      }
+    }
+    // Historical insights
+    const hist=ins.slice(1);
+    if(!hist.length){el.innerHTML='<div style="font-size:11px;color:var(--text3);padding:8px 0">No older insights</div>';return;}
+    el.innerHTML=hist.map(i=>{
+      const rl=i.regime_label||'NEUTRAL', ret=i.nifty_return;
+      const txt=(i.full_insight||i.what_text||'—').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+      return '<div class="ins-card"><div class="ins-meta"><span class="ins-date">'+i.date+'</span><span class="chg '+cc(ret)+'" style="font-size:11px">'+(ret!=null?pct(ret,2,true):'—')+'</span><span class="regime '+regimeCls(rl)+'" style="font-size:10px;padding:2px 8px">'+rl+'</span>'+(i.top_sector?'<span style="font-size:11px;color:var(--text3)">Top: '+i.top_sector+'</span>':'')+'</div><div class="ins-body">'+txt+'</div></div>';
+    }).join('');
+  }catch(e){}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// RUN PIPELINE
+// ─────────────────────────────────────────────────────────────────
+async function runPipeline(){
+  const btn=document.getElementById('run-btn');
+  btn.disabled=true; btn.textContent='⏳ Running...';
+  try{
+    await fetch(`${API}/api/run/daily`,{method:'POST'});
+    setTimeout(()=>{btn.disabled=false;btn.textContent='▶ RUN DAILY';loadTopbar();},60000);
+  }catch(e){btn.disabled=false;btn.textContent='▶ RUN DAILY';}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────
+loadOverview();
+setInterval(loadTopbar,300000);
 </script>
 </body>
 </html>

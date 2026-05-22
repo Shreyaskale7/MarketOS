@@ -325,19 +325,19 @@ def log_market_status(status: dict) -> None:
     ms    = status["market_status"]
     mode  = status["engine_mode"]
     dq    = status["data_quality"]
-    valid = "✓" if status["nifty_is_valid"] else "✗"
+    valid = "Y" if status["nifty_is_valid"] else "N"
 
-    print(f"\n  ┌─ MARKET STATUS [{d}] ────────────────────────────")
-    print(f"  │  Status       : {ms}")
-    print(f"  │  Session      : {status['session_state']}")
-    print(f"  │  Engine Mode  : {mode}")
-    print(f"  │  Data Quality : {dq}")
-    print(f"  │  NIFTY Valid  : {valid}")
+    print(f"\n  +- MARKET STATUS [{d}] ----------------------------")
+    print(f"  |  Status       : {ms}")
+    print(f"  |  Session      : {status['session_state']}")
+    print(f"  |  Engine Mode  : {mode}")
+    print(f"  |  Data Quality : {dq}")
+    print(f"  |  NIFTY Valid  : {valid}")
     if status["close_reason"]:
-        print(f"  │  Reason       : {status['close_reason']}")
-    print(f"  │  Last Trade   : {status['last_trading_day']}")
-    print(f"  │  Next Trade   : {status['next_trading_day']}")
-    print(f"  └──────────────────────────────────────────────────")
+        print(f"  |  Reason       : {status['close_reason']}")
+    print(f"  |  Last Trade   : {status['last_trading_day']}")
+    print(f"  |  Next Trade   : {status['next_trading_day']}")
+    print(f"  +--------------------------------------------------")
 
 
 # ─────────────────────────────────────────────────────────────────
