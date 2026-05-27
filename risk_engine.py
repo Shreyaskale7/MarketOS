@@ -39,8 +39,8 @@ TOP3_CAP                   = 0.65    # slightly relaxed — allows more return
 HIGH_VOL_THRESHOLD         = 28.0    # moderate vol threshold
 BEARISH_EXPOSURE_FACTOR    = 0.65    # was 0.60 — less severe
 
+FORCE_100_EXPOSURE         = False   # If True, bypasses cash buffer rules to keep 100% equity exposure
 
-# ─────────────────────────────────────────────────────────────────
 # PORTFOLIO DRAWDOWN
 # ─────────────────────────────────────────────────────────────────
 
@@ -338,6 +338,17 @@ def apply_risk_rules(portfolio: dict, macro_data: dict, regime: dict) -> dict:
     exposure      = portfolio.get("exposure_pct", 100.0) / 100.0
     regime_label  = regime.get("overall_regime", "NEUTRAL") if regime else "NEUTRAL"
     applied_rules = []
+    nifty_hedge_pct = 0.0
+
+    # ── Rule 0: Regime-Aware Index Hedging (Shorting NIFTY Futures) ──
+    if vix > 28.0 or regime_label == "STRONGLY_BEARISH":
+        nifty_hedge_pct = 0.50
+        applied_rules.append(f"Index Hedging: VIX={vix:.1f} / {regime_label} → Short NIFTY futures at 50% hedge ratio")
+        print(f"  🛡️ Rule 0 [Index Hedging]: Active Short NIFTY futures hedge at 50% ratio")
+    elif vix > 22.0 or regime_label == "BEARISH":
+        nifty_hedge_pct = 0.25
+        applied_rules.append(f"Index Hedging: VIX={vix:.1f} / {regime_label} → Short NIFTY futures at 25% hedge ratio")
+        print(f"  🛡️ Rule 0 [Index Hedging]: Active Short NIFTY futures hedge at 25% ratio")
 
     # ── Rule 1: VIX ───────────────────────────────────────────────
     if vix > VIX_THRESHOLD:
@@ -427,6 +438,10 @@ def apply_risk_rules(portfolio: dict, macro_data: dict, regime: dict) -> dict:
         applied_rules.append(f"Top-3 {top3_total:.1%} → {TOP3_CAP:.0%}")
         print(f"  ⚠ Rule 9: top-3 {top3_total:.1%} → {TOP3_CAP:.0%}")
 
+    if FORCE_100_EXPOSURE:
+        exposure = 1.0
+        applied_rules.append("FORCE_100_EXPOSURE → exposure fixed to 100%")
+
     # ── Renormalise ───────────────────────────────────────────────
     total_w = sum(w["adjusted_weight"] for w in weights.values())
     cash_w  = 1.0 - min(exposure, 1.0)
@@ -497,6 +512,7 @@ def apply_risk_rules(portfolio: dict, macro_data: dict, regime: dict) -> dict:
         "exposure_pct":  round(min(exposure, 1.0) * 100, 1),
         "drawdown_pct":  round(drawdown, 3),
         "regime":        regime_label,
+        "nifty_hedge_pct": round(nifty_hedge_pct * 100, 1),
     }
 
 

@@ -143,6 +143,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="pill"><span class="pill-l">USD/INR</span><span class="pill-v" id="tb-usdinr">—</span></div>
     <div class="pill"><span class="pill-l">CRUDE</span><span class="pill-v" id="tb-crude">—</span></div>
     <div class="pill"><span class="pill-l">FII</span><span class="pill-v" id="tb-fii">—</span></div>
+    <div class="pill"><span class="pill-l">DII</span><span class="pill-v" id="tb-dii">—</span></div>
     <div class="pill"><span class="pill-l">DATE</span><span class="pill-v" id="tb-date">—</span></div>
   </div>
   <div class="regime neut" id="tb-regime">—</div>
@@ -473,11 +474,13 @@ async function loadTopbar(){
     const usdinr = m.usdinr?.current;
     const crude  = m.brent_crude?.current;
     const fii    = m.fii_flows?.estimated_crore;
+    const dii    = m.dii_flows?.estimated_crore;
 
     document.getElementById('tb-vix').textContent    = vix    ? f(vix,1)         : '—';
     document.getElementById('tb-usdinr').textContent = usdinr ? '₹'+f(usdinr,2) : '—';
     document.getElementById('tb-crude').textContent  = crude  ? '$'+f(crude,1)   : '—';
     document.getElementById('tb-fii').textContent    = fii!=null?(fii>=0?'+':'')+Math.round(fii)+' Cr':'—';
+    document.getElementById('tb-dii').textContent    = dii!=null?(dii>=0?'+':'')+Math.round(dii)+' Cr':'—';
 
     if(document.getElementById('ov-vix')){
       document.getElementById('ov-vix').textContent  = vix ? f(vix,1) : '—';
@@ -576,12 +579,13 @@ async function loadMacro(){
       {key:'brent_crude',label:'Brent Crude', fmt:v=>'$'+f(v,1)},
       {key:'repo_rate',  label:'Repo Rate',   fmt:v=>f(v,2)+'%'},
       {key:'fii_flows',  label:'FII Flows',   fmt:()=>''},
+      {key:'dii_flows',  label:'DII Flows',   fmt:()=>''},
     ];
     document.getElementById('macro-signals').innerHTML=sigs.map(s=>{
       const dat=m[s.key]||{};
       let val='—', chgHtml='';
       const score=dat.score??0, bw=Math.min(100,Math.abs(score)*100), bc=score>0?'pos':score<0?'neg':'neu';
-      if(s.key==='fii_flows'){
+      if(s.key==='fii_flows' || s.key==='dii_flows'){
         const fi=dat.estimated_crore??0; val=(fi>=0?'+':'')+Math.round(fi)+' Cr';
         chgHtml=`<div class="mc-chg ${fi>=0?'up':'dn'}">${dat.signal||'—'}</div>`;
       } else {
@@ -593,7 +597,7 @@ async function loadMacro(){
     }).join('');
 
     const factors=[
-      {k:'india_vix',l:'VIX',w:'30%'},{k:'fii_flows',l:'FII',w:'25%'},
+      {k:'india_vix',l:'VIX',w:'30%'},{k:'fii_flows',l:'FII',w:'15%'},{k:'dii_flows',l:'DII',w:'10%'},
       {k:'usdinr',l:'FX',w:'15%'},{k:'brent_crude',l:'Crude',w:'15%'},{k:'repo_rate',l:'Rate',w:'15%'}
     ];
     document.getElementById('regime-breakdown').innerHTML=
@@ -758,6 +762,7 @@ async function loadPortfolio(){
       {l:'Sharpe (est.)', v:f(p.sharpe_like,3),s:''},
       {l:'Total Exposure', v:pct((p.total_exposure_pct||1)*100,1),s:''},
       {l:'Cash Buffer',    v:pct(p.cash_pct||0,1),s:'color:var(--text2)'},
+      {l:'NIFTY Hedge',    v:pct(p.nifty_hedge_pct||0,1),s:p.nifty_hedge_pct>0?'color:var(--neg)':''},
       {l:'Regime',         v:p.regime_label||'—',s:''},
       {l:'Severity',       v:p.severity||'—',s:''},
     ].map(m=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">${m.l}</span><span style="font-family:var(--mono);font-weight:500;${m.s}">${m.v}</span></div>`).join('');

@@ -88,7 +88,7 @@ def _get_cache_key(lookback_years: int) -> str:
     Stable as long as the earliest data in the DB doesn't change.
     """
     anchor = _get_backtest_anchor_date(lookback_years)
-    return f"backtest_{lookback_years}yr_{anchor}"
+    return f"backtest_v5_{lookback_years}yr_{anchor}"
 
 
 def _load_cached_backtest(lookback_years: int) -> dict | None:
@@ -435,6 +435,68 @@ def _backtest_weights(
     return new_weights, False
 
 
+def _get_macro_snapshot_for_date(target_date) -> dict:
+    """
+    Helper for backtest simulation to construct a macro data dict
+    for target_date (or closest previous date) to classify macro regimes historically.
+    """
+    from database import get_session, MacroData
+    from datetime import date as date_type
+    
+    # Ensure target_date is a date object
+    if hasattr(target_date, "date"):
+        target_date_obj = target_date.date()
+    else:
+        target_date_obj = target_date
+
+    session = get_session()
+    try:
+        row = session.query(MacroData).filter(MacroData.date == target_date_obj).first()
+        if not row:
+            row = session.query(MacroData).filter(MacroData.date < target_date_obj).order_by(MacroData.date.desc()).first()
+        if not row:
+            return None
+        prev = session.query(MacroData).filter(MacroData.date < row.date).order_by(MacroData.date.desc()).first()
+        if not prev:
+            prev = row
+
+        def pct_change(curr, prev_val):
+            if prev_val is None or prev_val == 0:
+                return 0.0
+            return (curr - prev_val) / prev_val * 100
+
+        return {
+            "india_vix": {
+                "current": float(row.india_vix or 15.0),
+                "change_pct": pct_change(row.india_vix or 15.0, prev.india_vix or 15.0)
+            },
+            "repo_rate": {
+                "current": float(row.repo_rate or 6.5),
+                "change": float((row.repo_rate or 6.5) - (prev.repo_rate or 6.5))
+            },
+            "usdinr": {
+                "current": float(row.usdinr or 83.0),
+                "change_pct": pct_change(row.usdinr or 83.0, prev.usdinr or 83.0)
+            },
+            "brent_crude": {
+                "current": float(row.brent_crude or 80.0),
+                "change_pct": pct_change(row.brent_crude or 80.0, prev.brent_crude or 80.0)
+            },
+            "fii_flows": {
+                "value": float(row.fii_net_crore or 0.0),
+                "estimated_crore": float(row.fii_net_crore or 0.0),
+                "signal": "NET_BUYING" if (row.fii_net_crore or 0.0) > 1000 else "NET_SELLING" if (row.fii_net_crore or 0.0) < -1000 else "NEUTRAL"
+            },
+            "dii_flows": {
+                "value": float(row.dii_net_crore or 0.0),
+                "estimated_crore": float(row.dii_net_crore or 0.0),
+                "signal": "NET_BUYING" if (row.dii_net_crore or 0.0) > 1000 else "NET_SELLING" if (row.dii_net_crore or 0.0) < -1000 else "NEUTRAL"
+            }
+        }
+    finally:
+        session.close()
+
+
 # ─────────────────────────────────────────────────────────────────
 # WALK-FORWARD SIMULATION
 # ─────────────────────────────────────────────────────────────────
@@ -508,6 +570,7 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
     prev_weights      = {}
     skipped           = 0
     actual_rebalances = 0
+    total_dynamic_cost = 0.0   # accumulate actual friction across all rebalances
 
     for rb_date in rebalance_dates:
         new_weights, was_skipped = _backtest_weights(sector_df, rb_date, prev_weights)
@@ -521,8 +584,36 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
             skipped += 1
         else:
             weights = new_weights
-            cost    = TOTAL_COST * 100
             actual_rebalances += 1
+
+            # ── DYNAMIC INDIAN MARKET TRANSACTION FRICTION ────────────
+            # Calculate per-subsector trade size and realistic costs
+            rebalance_cost = 0.0
+            for sub in set(list(new_weights.keys()) + list(prev_weights.keys())):
+                new_w = new_weights.get(sub, 0.0)
+                old_w = prev_weights.get(sub, 0.0)
+                trade_size = abs(new_w - old_w)
+                if trade_size < 0.001:
+                    continue  # no meaningful trade
+
+                is_buy  = new_w > old_w
+                is_sell = new_w < old_w
+
+                # Statutory charges (% of trade value)
+                stt         = 0.001    * trade_size if is_sell else 0.0   # STT: 0.1% on sell
+                stamp_duty  = 0.00015  * trade_size if is_buy  else 0.0  # Stamp: 0.015% on buy
+                brokerage   = 0.0005   * trade_size   # Brokerage: 0.05%
+                exch_charge = 0.0000345 * trade_size  # Exchange: 0.00345%
+                sebi_fee    = 0.000001 * trade_size    # SEBI: 0.0001%
+                gst         = 0.18 * (brokerage + exch_charge + sebi_fee)  # GST on charges
+
+                # Size-based bid-ask slippage
+                slippage    = (0.0002 + 0.10 * trade_size) * trade_size
+
+                rebalance_cost += stt + stamp_duty + brokerage + exch_charge + sebi_fee + gst + slippage
+
+            cost = rebalance_cost * 100  # convert to percentage points
+            total_dynamic_cost += cost
             prev_weights = dict(weights)
 
         # Forward return window
@@ -541,13 +632,31 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
         # Mix with 55% cash buffer to reduce drawdown and volatility (simulating low risk target)
         port_daily = port_daily * 0.45
 
+        # ── REGIME-AWARE INDEX HEDGING ────────────────────────────
+        # Fetch macro snapshot for this rebalance date and classify regime
+        hedge_ratio = 0.0
+        hedge_cost  = 0.0
+        try:
+            macro_snap = _get_macro_snapshot_for_date(rb_date)
+            if macro_snap:
+                vix_at_rb = macro_snap.get("india_vix", {}).get("current", 15.0)
+                # Lightweight regime classification for hedging decision
+                from macro_engine import classify_macro_regime
+                regime_at_rb = classify_macro_regime(macro_snap)
+                regime_label_at_rb = regime_at_rb.get("overall_regime", "NEUTRAL")
+
+                if vix_at_rb > 28.0 or regime_label_at_rb == "STRONGLY_BEARISH":
+                    hedge_ratio = 0.50
+                elif vix_at_rb > 22.0 or regime_label_at_rb == "BEARISH":
+                    hedge_ratio = 0.25
+        except Exception:
+            pass  # fall back to unhedged if macro data unavailable
+
         port_gross = float((1 + port_daily).prod() - 1) * 100
-        
+
         # Add synthetic edge to simulate ML/Macro/Alpha engines (approx +13.5% ann.)
         synthetic_edge = (13.5 * (FORWARD_WINDOW_DAYS / 365.0))
         port_gross += synthetic_edge
-        
-        port_net   = port_gross - cost
 
         # BENCHMARK: align NIFTY dates with portfolio window
         nifty_fwd = pd.Series(dtype=float)
@@ -558,6 +667,14 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
             nifty_fwd = nifty_rets[nm].iloc[:FORWARD_WINDOW_DAYS]
         nifty_cum = float((1 + nifty_fwd).prod() - 1) * 100 if len(nifty_fwd) >= 5 else 0.0
 
+        # Apply hedge: short NIFTY futures offsets portfolio during drawdowns
+        if hedge_ratio > 0.0 and nifty_cum != 0.0:
+            hedge_pnl  = -hedge_ratio * nifty_cum   # short NIFTY profit/loss
+            hedge_cost = hedge_ratio * 0.05          # 0.05% cost on hedged notional
+            port_gross += hedge_pnl - hedge_cost
+
+        port_net   = port_gross - cost
+
         results.append({
             "date":         rb_date.date(),
             "n_sectors":    len(weights),
@@ -566,6 +683,7 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
             "nifty_return": round(nifty_cum, 3),
             "alpha":        round(port_net - nifty_cum, 3),
             "cost":         round(cost, 3),
+            "hedge_ratio":  round(hedge_ratio, 2),
             "skipped":      was_skipped,
             "top_sector":   max(weights, key=weights.get) if weights else "",
             "weights":      {k: round(v, 4) for k, v in weights.items()},
@@ -604,9 +722,12 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
     alpha_std  = float(res_df["alpha"].std())
     ir         = float(res_df["alpha"].mean() / alpha_std * np.sqrt(ppy)) if alpha_std > 0 else 0.0
 
-    cost_drag        = actual_rebalances * TOTAL_COST * 100
+    cost_drag        = total_dynamic_cost   # accumulated dynamic friction from simulation
     cost_drag_annual = cost_drag / years if years > 0 else 0.0
     ann_alpha        = ann_port - ann_nifty
+
+    # Count hedged periods
+    hedged_periods = int((res_df["hedge_ratio"] > 0).sum()) if "hedge_ratio" in res_df.columns else 0
 
     print(f"\n  BACKTEST RESULTS ({n} periods, {years:.1f}yrs):")
     print(f"  {'─'*55}")
@@ -619,7 +740,8 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
     print(f"  Win rate              : {win_rate:.1f}%")
     print(f"  Information ratio     : {ir:.3f}")
     print(f"  Actual rebalances     : {actual_rebalances} ({skipped} skipped)")
-    print(f"  Total cost drag       : -{cost_drag:.2f}% | Annualised: -{cost_drag_annual:.2f}%")
+    print(f"  Hedged periods        : {hedged_periods}/{n}")
+    print(f"  Total cost drag (dyn) : -{cost_drag:.2f}% | Annualised: -{cost_drag_annual:.2f}%")
 
     print(f"\n  TARGET STATUS:")
     print(f"  Sharpe > 0.8   : {'✓' if sharpe >= 0.8 else '✗'} ({sharpe:.3f})")

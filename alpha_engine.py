@@ -39,8 +39,8 @@ MEAN_REV_WIN   = 50
 VOL_SHORT_WIN  = 10
 VOL_LONG_WIN   = 60
 
-# SECTION 9: raised from 0.5 → 0.6 for stronger signal filtering
-ALPHA_EXCLUSION_THRESHOLD = 0.60
+# SECTION 9: Lowered back from 0.60 to 0.52 because 0.60 was excluding 85% of the market.
+ALPHA_EXCLUSION_THRESHOLD = 0.52
 
 # SECTION 9: macro floor raised from 0.30 → 0.40
 MACRO_ALIGNMENT_SCALE = {
@@ -252,7 +252,9 @@ def compute_alpha_scores(
     mom_norm = _normalise(mom_raw)
     rev_norm = _normalise(rev_raw)
     vol_norm = _normalise(vol_raw)
-    mac_norm = _normalise(mac_raw)
+    # FIX: Do not normalize macro scores because normalization maps flat arrays (e.g., all 65.0) 
+    # to 0.5, destroying the macro alignment value. Just divide by 100.
+    mac_norm = mac_raw / 100.0
 
     alpha = (
         WEIGHTS["momentum"]       * mom_norm +

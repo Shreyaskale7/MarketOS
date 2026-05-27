@@ -260,10 +260,19 @@ def alpha_signals():
 # ROUTE 5 — PORTFOLIO ALLOCATION
 # ─────────────────────────────────────────────────────────────────
 
+_PORTFOLIO_CACHE = {}
+
 @app.route("/api/portfolio")
 def portfolio():
     try:
         horizon = request.args.get("horizon", "3M")
+        
+        # Simple cache to make UI horizon switching instant
+        from pipeline_utils import get_pipeline_date
+        pd_date_str = str(get_pipeline_date())
+        cache_key = f"{pd_date_str}_{horizon}"
+        if cache_key in _PORTFOLIO_CACHE:
+            return jsonify({"status": "ok", "portfolio": _PORTFOLIO_CACHE[cache_key]})
         from macro_engine import fetch_live_macro_data, classify_macro_regime
         from ml_forecast_engine import generate_ml_forecasts
         from portfolio_engine import build_portfolio
@@ -346,8 +355,12 @@ def portfolio():
             "rules_applied":       risk_p.get("rules_applied", risk_p.get("applied_rules", [])),
             "risk_rules_applied":  risk_p.get("rules_applied", risk_p.get("applied_rules", [])),
             "cash_pct":            risk_p.get("cash_pct", 0),
+            "nifty_hedge_pct":     risk_p.get("nifty_hedge_pct", 0.0),
             "horizon":             horizon,
         }
+
+        # Save to cache before returning
+        _PORTFOLIO_CACHE[cache_key] = portfolio_out
 
         return success({"portfolio": portfolio_out, "horizon": horizon})
     except Exception as exc:
@@ -700,6 +713,7 @@ def macro_history():
             "brent_crude":  r.brent_crude,
             "usdinr":       r.usdinr,
             "fii_net_crore": r.fii_net_crore,
+            "dii_net_crore": r.dii_net_crore,
             "gold_close":   r.gold_close,
         } for r in rows if r.nifty_close and r.nifty_close > 0]
 

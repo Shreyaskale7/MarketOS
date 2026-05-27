@@ -99,6 +99,14 @@ def load_macro_from_db() -> dict:
                                     else "NEUTRAL"),
                 "status":          "DB",
             },
+            "dii_flows": {
+                "value":           row.dii_net_crore,
+                "estimated_crore": row.dii_net_crore,
+                "signal":          ("NET_BUYING"  if row.dii_net_crore > 1000
+                                    else "NET_SELLING" if row.dii_net_crore < -1000
+                                    else "NEUTRAL"),
+                "status":          "DB",
+            },
             "gdp_growth": {
                 "current": row.gdp_growth,
                 "status":  "DB",
@@ -124,7 +132,7 @@ def load_macro_from_db() -> dict:
               f"[is_valid={nifty_is_valid} {validity_icon}]"
               f" | VIX: {row.india_vix:.1f} "
               f"| USD/INR: {row.usdinr:.2f} "
-              f"| Crude: ${row.brent_crude:.1f}")
+              f"| FII: {row.fii_net_crore:+.0f} Cr | DII: {row.dii_net_crore:+.0f} Cr")
 
         return macro_data
 
@@ -561,6 +569,56 @@ def classify_macro_regime(macro_data):
             fii_score, fii_regime = -0.5, "MODERATE_SELLING"
             fii_explanation = "FII proxy signal: NET_SELLING — estimated moderate outflow."
 
+    # ── 1cc. DII Score (domestic institutional flows) ──
+    dii_crore   = float(
+        macro_data.get('dii_flows', {}).get('value',
+        macro_data.get('dii_flows', {}).get('estimated_crore', 0.0))
+    )
+    dii_signal_str = macro_data.get('dii_flows', {}).get('signal', 'NEUTRAL')
+
+    if dii_crore > 4000:
+        dii_score  = +1.0
+        dii_regime = "STRONG_BUYING"
+        dii_explanation = (
+            f"DII net inflow ~₹{dii_crore:,.0f} Cr — very strong domestic institutional buying. "
+            f"Provides robust downside support to large and mid-caps."
+        )
+    elif dii_crore > 1000:
+        dii_score  = +0.5
+        dii_regime = "MODERATE_BUYING"
+        dii_explanation = (
+            f"DII net inflow ~₹{dii_crore:,.0f} Cr — moderate domestic buying. "
+            f"Counterbalances foreign capital outflows."
+        )
+    elif dii_crore > -1000:
+        dii_score  = 0.0
+        dii_regime = "NEUTRAL"
+        dii_explanation = (
+            f"DII flows near-flat at ~₹{dii_crore:,.0f} Cr — passive domestic participation."
+        )
+    elif dii_crore > -4000:
+        dii_score  = -0.5
+        dii_regime = "MODERATE_SELLING"
+        dii_explanation = (
+            f"DII net outflow ~₹{abs(dii_crore):,.0f} Cr — moderate domestic selling. "
+            f"Indicates profit booking or mutual fund redemption pressure."
+        )
+    else:
+        dii_score  = -1.0
+        dii_regime = "HEAVY_SELLING"
+        dii_explanation = (
+            f"DII net outflow ~₹{abs(dii_crore):,.0f} Cr — heavy domestic selling. "
+            f"High liquidity exit by domestic funds."
+        )
+
+    if dii_crore == 0.0 and dii_signal_str != 'NEUTRAL':
+        if dii_signal_str == "NET_BUYING":
+            dii_score, dii_regime = +0.5, "MODERATE_BUYING"
+            dii_explanation = "DII proxy signal: NET_BUYING — estimated moderate inflow."
+        elif dii_signal_str == "NET_SELLING":
+            dii_score, dii_regime = -0.5, "MODERATE_SELLING"
+            dii_explanation = "DII proxy signal: NET_SELLING — estimated moderate outflow."
+
     # ── 1c. USD/INR Score (rupee depreciation = bearish for India macro) ──
     usd_change  = float(macro_data.get('usdinr', {}).get('change_pct', 0.0))
     usdinr_curr = float(macro_data.get('usdinr', {}).get('current', 83.5))
@@ -701,7 +759,8 @@ def classify_macro_regime(macro_data):
     # ══════════════════════════════════════════════════════════════════
     WEIGHTS = {
         "vix":   0.30,   # most real-time signal — option market's fear gauge
-        "fii":   0.25,   # direct price pressure — FII = marginal buyer/seller
+        "fii":   0.15,   # direct price pressure — FII = marginal buyer/seller
+        "dii":   0.10,   # domestic flow support (NEW)
         "fx":    0.15,   # USDINR direction — macro stress indicator
         "crude": 0.15,   # import-bill driver — India-specific sensitivity
         "rate":  0.15,   # RBI stance — structural, changes rarely
@@ -710,6 +769,7 @@ def classify_macro_regime(macro_data):
     component_scores = {
         "vix":   vix_score,
         "fii":   fii_score,
+        "dii":   dii_score,
         "fx":    fx_score,
         "crude": crude_score,
         "rate":  rate_score,
@@ -718,6 +778,7 @@ def classify_macro_regime(macro_data):
     regime_score = (
         WEIGHTS["vix"]   * vix_score   +
         WEIGHTS["fii"]   * fii_score   +
+        WEIGHTS["dii"]   * dii_score   +
         WEIGHTS["fx"]    * fx_score    +
         WEIGHTS["crude"] * crude_score +
         WEIGHTS["rate"]  * rate_score
@@ -729,7 +790,7 @@ def classify_macro_regime(macro_data):
     print(f"  {'Factor':<12} {'Raw Score':>10} {'Weight':>8} {'Weighted':>10}  Regime")
     print(f"  {'─'*58}")
     _regime_labels = {
-        "vix": vix_regime, "fii": fii_regime,
+        "vix": vix_regime, "fii": fii_regime, "dii": dii_regime,
         "fx": fx_regime, "crude": crude_regime, "rate": rate_regime
     }
     for k, w in WEIGHTS.items():
@@ -739,7 +800,7 @@ def classify_macro_regime(macro_data):
     print(f"  {'─'*58}")
     print(f"  {'COMPOSITE':<12} {'':>10} {'':>8} {regime_score:>+9.3f}")
     print(f"\n  Regime score : {regime_score:+.3f}")
-    print(f"  VIX: {vix_score:+.1f}  FII: {fii_score:+.1f}  FX: {fx_score:+.1f}  Crude: {crude_score:+.1f}  Rate: {rate_score:+.1f}")
+    print(f"  VIX: {vix_score:+.1f}  FII: {fii_score:+.1f}  DII: {dii_score:+.1f}  FX: {fx_score:+.1f}  Crude: {crude_score:+.1f}  Rate: {rate_score:+.1f}")
 
     # ══════════════════════════════════════════════════════════════════
     # STEP 3 — STRICT CLASSIFICATION
@@ -818,12 +879,17 @@ def classify_macro_regime(macro_data):
         "signal": fii_regime, "estimated_crore": fii_crore,
         "score": fii_score, "score_int": int(round(fii_score * 2)),
     }
+    regime['variables']['dii_flows'] = {
+        "signal": dii_regime, "estimated_crore": dii_crore,
+        "score": dii_score, "score_int": int(round(dii_score * 2)),
+    }
 
     regime['explanation']['vix']          = vix_explanation
     regime['explanation']['repo_rate']    = rate_explanation
     regime['explanation']['usdinr']       = fx_explanation
     regime['explanation']['brent_crude']  = crude_explanation
     regime['explanation']['fii_flows']    = fii_explanation
+    regime['explanation']['dii_flows']    = dii_explanation
 
     # ── Regime trend (3-day direction from DB) ─────────────────────────
     try:
@@ -1621,7 +1687,12 @@ def print_macro_report(moderated_output):
     print(f"{'─'*65}")
 
     for var_name, var_data in regime['variables'].items():
-        name_clean = var_name.replace('_', ' ').title()
+        if var_name == "fii_flows":
+            name_clean = "FII Flows"
+        elif var_name == "dii_flows":
+            name_clean = "DII Flows"
+        else:
+            name_clean = var_name.replace('_', ' ').title()
         print(f"\n{name_clean}:")
         print(f"  Regime: {var_data.get('regime', 'N/A')}")
         # score is now a float; format accordingly
