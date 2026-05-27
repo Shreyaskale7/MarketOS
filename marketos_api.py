@@ -241,7 +241,7 @@ def alpha_signals():
             "moderated_sectors": moderated_sectors,
         }
 
-        alpha = compute_alpha_scores(moderated_output, macro, regime)
+        alpha = compute_alpha_scores(moderated_output, macro, regime, force_run=True)
 
         # Sort by alpha score descending
         sorted_alpha = dict(sorted(
@@ -272,7 +272,40 @@ def portfolio():
         macro   = fetch_live_macro_data()
         regime  = classify_macro_regime(macro)
         fc      = generate_ml_forecasts(macro, regime)
-        port    = build_portfolio(fc, macro, regime, horizon=horizon)
+
+        # Build moderated_output for alpha (needed for portfolio)
+        from database import get_session, SectorPerformance
+        from pipeline_utils import get_pipeline_date
+        from classification import MARKET_CLASSIFICATION
+        pd_date = get_pipeline_date()
+        session = get_session()
+        try:
+            rows = session.query(SectorPerformance).filter(
+                SectorPerformance.date >= pd_date - timedelta(days=3)
+            ).all()
+        finally:
+            session.close()
+
+        moderated_sectors = {}
+        for r in rows:
+            sec = r.sector
+            if sec not in moderated_sectors:
+                align = r.macro_alignment or "NEUTRAL"
+                _align_map = {"MACRO_ALIGNED": 1.0, "NEUTRAL": 0.65, "MACRO_DIVERGENT": 0.4}
+                moderated_sectors[sec] = {
+                    "macro_alignment": align,
+                    "macro_score": _align_map.get(align, 0.65),
+                    "sector_return": float(r.sector_return_pct or 0),
+                }
+        if not moderated_sectors:
+            for sec_name in MARKET_CLASSIFICATION:
+                moderated_sectors[sec_name] = {"macro_alignment": "NEUTRAL", "macro_score": 0.65, "sector_return": 0.0}
+
+        moderated_output = {"macro_data": macro, "macro_regime": regime, "moderated_sectors": moderated_sectors}
+        from alpha_engine import compute_alpha_scores
+        alpha = compute_alpha_scores(moderated_output, macro, regime, force_run=True)
+
+        port    = build_portfolio(fc, macro, regime, horizon=horizon, alpha_scores=alpha, force_rebalance=True)
         risk_p  = apply_risk_rules(port, macro, regime)
 
         # Transform weights dict → positions array for the dashboard

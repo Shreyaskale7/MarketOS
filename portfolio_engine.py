@@ -25,17 +25,17 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────
-MAX_WEIGHT          = 0.20    # tighter cap: reduces concentration, improves Sharpe
+MAX_THEME_WEIGHT    = 0.40
+MAX_SECTOR_WEIGHT   = 0.20    # no single sector above 20% of portfolio
+TOP_SECTORS_KEEP    = 10      # allow more sectors to support diversification
+MIN_SECTORS         = 5       # floor for diversification (since max 20% per sector)
+MIN_EXPECTED_RETURN = 5.0     # weak signals removed (with fallback)
 MIN_WEIGHT          = 0.04    # lowered: 4% floor allows more positions to survive
 ALPHA_MIN_THRESHOLD = 0.50    # aligned: matches regime-aware threshold floor
 HIGH_VOL_PENALTY_T  = 30.0    # FIX 1: soft penalty above 30% vol
 VOL_SCALE_THRESH    = 20.0    # inverse-vol sizing threshold
-MAX_THEME_WEIGHT    = 0.40
-MAX_SECTOR_WEIGHT   = 0.50    # no single sector above 50% of portfolio
+MAX_WEIGHT          = 0.20    # tighter cap: reduces concentration, improves Sharpe
 TOP3_CAP            = 0.60
-TOP_SECTORS_KEEP    = 6
-MIN_SECTORS         = 4
-MIN_EXPECTED_RETURN = 5.0     # weak signals removed (with fallback)
 CORR_THRESHOLD      = 0.85
 RISK_FREE_RATE      = 0.065
 VOL_LOOKBACK_DAYS   = 60
@@ -214,6 +214,7 @@ def build_portfolio(
     regime:        dict,
     horizon:       str  = "3M",
     alpha_scores:  dict = None,
+    force_rebalance: bool = False,
 ) -> dict:
     """
     Institutional-grade portfolio construction pipeline.
@@ -236,7 +237,7 @@ def build_portfolio(
         _mkt = {"should_rebalance": True, "is_trading_day": True,
                 "engine_mode": "FULL", "close_reason": ""}
 
-    if not _mkt.get("should_rebalance", True):
+    if not _mkt.get("should_rebalance", True) and not force_rebalance:
         reason = _mkt.get("close_reason", "non-trading day")
         print(f"  ⚠ Portfolio rebalancing SKIPPED — {reason}")
         print("     Returning previous portfolio weights unchanged.")
@@ -326,8 +327,9 @@ def build_portfolio(
         df = df_all[df_all["exp_return"] > 0].copy()
     if df.empty:
         print("  ⚠ All non-positive — equal-weight fallback")
-        df_all["weight"] = 1.0 / max(len(df_all), 1)
-        return _format_output(df_all, macro_data, regime, horizon, note="all_negative_returns")
+        df_all["weight"]     = 1.0 / len(df_all)
+        df_all["weight_adj"] = df_all["weight"]
+        return _format_output(df_all, macro_data, regime, horizon, force_rebalance=force_rebalance, note="all_negative_returns")
 
     # ── STEP 5: Sector selection — top 6 max, min 4 guaranteed ───
     sector_scores    = df.groupby("sector")["score"].sum().sort_values(ascending=False)
@@ -476,13 +478,14 @@ def build_portfolio(
         cash_weight=cash_weight,
         exposure=exposure,
         vix=vix,
+        force_rebalance=force_rebalance,
     )
 
 
 def _format_output(df, macro_data, regime, horizon,
                    portfolio_return=0.0, portfolio_vol=0.0,
                    sharpe_like=0.0, cash_weight=0.0,
-                   exposure=1.0, vix=15.0, note=""):
+                   exposure=1.0, vix=15.0, force_rebalance=False, note=""):
     weights = {}
     for _, row in df.iterrows():
         weights[row["subsector"]] = {
@@ -497,7 +500,7 @@ def _format_output(df, macro_data, regime, horizon,
         }
 
     # TASK 4: STRICT VALIDATION — fail fast on invalid NIFTY data
-    if not macro_data.get("nifty", {}).get("is_valid", False):
+    if not macro_data.get("nifty", {}).get("is_valid", False) and not force_rebalance:
         raise ValueError("CRITICAL: Invalid NIFTY data — aborting portfolio construction run")
 
     return {

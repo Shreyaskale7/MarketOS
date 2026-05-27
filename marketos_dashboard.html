@@ -310,6 +310,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
         <div class="card span2"><div class="card-title">Equity Curve — Portfolio vs NIFTY</div><div class="ch-lg"><canvas id="ch-equity"></canvas></div></div>
         <div class="card"><div class="card-title">Target Status</div><div id="bt-targets"><div class="empty">Loading...</div></div></div>
         <div class="card"><div class="card-title">Period Alpha Distribution</div><div class="ch"><canvas id="ch-periods"></canvas></div></div>
+        <div class="card span2">
+          <div class="card-title">Portfolio Holdings per Period</div>
+          <div id="bt-holdings"><div class="empty">Run backtest to see period holdings</div></div>
+        </div>
       </div>
     </div>
 
@@ -716,7 +720,15 @@ async function loadForecasts(){
 }
 function setFcTab(h,btn){document.querySelectorAll('#sec-forecasts .tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderFc(h);}
 function renderFc(h){
-  const rows=_fcData.filter(r=>r.horizon===h).sort((a,b)=>(b.opportunity_score||0)-(a.opportunity_score||0)).slice(0,15);
+  // Fix 4 — deduplicate by subsector+sector key before sorting
+  const seen=new Set();
+  const deduped=_fcData.filter(r=>{
+    if(r.horizon!==h) return false;
+    const key=(r.subsector||'')+'|'+(r.sector||'');
+    if(seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+  const rows=deduped.sort((a,b)=>(b.opportunity_score||0)-(a.opportunity_score||0)).slice(0,15);
   const el=document.getElementById('fc-rows');
   if(!rows.length){el.innerHTML='<div class="empty">No forecasts for this horizon</div>';return;}
   el.innerHTML=rows.map((r,i)=>{
@@ -745,7 +757,7 @@ async function loadPortfolio(){
       {l:'Portfolio Vol',  v:pct(p.portfolio_vol_pct||p.portfolio_vol,1),s:''},
       {l:'Sharpe (est.)', v:f(p.sharpe_like,3),s:''},
       {l:'Total Exposure', v:pct((p.total_exposure_pct||1)*100,1),s:''},
-      {l:'Cash Buffer',    v:pct((p.cash_pct||0)*100,1),s:'color:var(--text2)'},
+      {l:'Cash Buffer',    v:pct(p.cash_pct||0,1),s:'color:var(--text2)'},
       {l:'Regime',         v:p.regime_label||'—',s:''},
       {l:'Severity',       v:p.severity||'—',s:''},
     ].map(m=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">${m.l}</span><span style="font-family:var(--mono);font-weight:500;${m.s}">${m.v}</span></div>`).join('');
@@ -804,10 +816,12 @@ async function loadBt(yrs,btn){
     const curve=bt.equity_curve||[];
     if(curve.length){
       destroyChart('equity');
+      // portfolio_index / nifty_index are base-100 indexed values (100 = start)
+      // divide by 100 to get ratio; chart tick then shows (ratio*100-100) = gain %
       _ch['equity']=new Chart(document.getElementById('ch-equity').getContext('2d'),{type:'line',
         data:{labels:curve.map(c=>(c.date||'').slice(0,7)),datasets:[
-          {label:'Portfolio',data:curve.map(c=>c.portfolio_cumulative||c.portfolio||1),borderColor:'#00D4AA',borderWidth:2,fill:false,tension:.3,pointRadius:0},
-          {label:'NIFTY',    data:curve.map(c=>c.nifty_cumulative||c.nifty||1),borderColor:'#4A5568',borderWidth:1.5,fill:false,tension:.3,pointRadius:0,borderDash:[4,3]}
+          {label:'Portfolio',data:curve.map(c=>c.portfolio_index!=null?c.portfolio_index/100:(c.portfolio_cumulative||c.portfolio||1)),borderColor:'#00D4AA',borderWidth:2,fill:false,tension:.3,pointRadius:0},
+          {label:'NIFTY',    data:curve.map(c=>c.nifty_index!=null?c.nifty_index/100:(c.nifty_cumulative||c.nifty||1)),borderColor:'#4A5568',borderWidth:1.5,fill:false,tension:.3,pointRadius:0,borderDash:[4,3]}
         ]},
         options:{...CX,scales:{x:CX.scales.x,y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>(v*100-100).toFixed(0)+'%'}}}}
       });
@@ -820,6 +834,26 @@ async function loadBt(yrs,btn){
         data:{labels:prs.map((p,i)=>p.date?(p.date+'').slice(0,7):`P${i+1}`),datasets:[{label:'Period Alpha',data:alphas,backgroundColor:alphas.map(a=>a>=0?'rgba(0,212,170,.4)':'rgba(255,71,87,.4)'),borderColor:alphas.map(a=>a>=0?'#00D4AA':'#FF4757'),borderWidth:1}]},
         options:{...CX,plugins:{legend:{display:false}},scales:{x:{...CX.scales.x,ticks:{...CX.scales.x.ticks,maxTicksLimit:10}},y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>v.toFixed(1)+'%'}}}}
       });
+      // Fix 3 — Holdings per period table
+      const holdEl=document.getElementById('bt-holdings');
+      if(holdEl){
+        const periodsWithWeights=prs.filter(p=>p.weights&&Object.keys(p.weights).length);
+        if(!periodsWithWeights.length){
+          holdEl.innerHTML='<div class="empty">Re-run backtest to populate holdings (weights not saved in old cache)</div>';
+        } else {
+          let tbl='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Period</th><th class="r">Port%</th><th class="r">Alpha%</th><th>Top Holdings (adjusted weight)</th></tr></thead><tbody>';
+          periodsWithWeights.forEach(p=>{
+            const dateStr=(p.date+'').slice(0,7);
+            const wts=Object.entries(p.weights).sort((a,b)=>b[1]-a[1]).slice(0,5);
+            const tags=wts.map(([s,w])=>`<span style="display:inline-block;margin:2px;padding:2px 7px;border-radius:3px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);font-family:var(--mono);font-size:10px;color:var(--green)">${s} <span style="color:var(--text2)">${(w*100).toFixed(1)}%</span></span>`).join('');
+            const portCls=p.port_return>=0?'color:var(--green)':'color:var(--red)';
+            const alphaCls=p.alpha>=0?'color:var(--green)':'color:var(--red)';
+            tbl+=`<tr><td style="font-family:var(--mono);font-size:11px;white-space:nowrap">${dateStr}</td><td class="r" style="font-family:var(--mono);${portCls}">${(p.port_return||0).toFixed(2)}%</td><td class="r" style="font-family:var(--mono);${alphaCls}">${(p.alpha||0).toFixed(2)}%</td><td style="padding:6px 10px">${tags}</td></tr>`;
+          });
+          tbl+='</tbody></table></div>';
+          holdEl.innerHTML=tbl;
+        }
+      }
     }
   }catch(e){console.warn('Backtest error',e);}
 }

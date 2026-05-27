@@ -305,6 +305,12 @@ def normalize_contributions(sectors, nifty_actual_pct):
 
     scale = nifty_actual_pct / total_raw
 
+    # Guard 3: negative scale (inversion) on flat/mixed days
+    # If scale is negative, multiplying would invert all sector direction signals
+    # (e.g., positive contributors become negative). Return raw contributions instead.
+    if scale < 0:
+        return sectors, round(scale, 4)
+
     # Guard 2: scale explosion on flat/mixed days — cap at ±5.0
     # If scale > 5, it means sector contributions nearly cancelled out
     # and the amplification would produce physically impossible returns.
@@ -436,7 +442,12 @@ def run_full_contribution_engine(target_date=None, lookback_days=LOOKBACK_DAYS):
         norm_total = sum(s["sector_contribution_to_index_pct"] for s in sector_results.values())
 
         # Determine confidence based on scale factor
-        if abs(scale) > 5.0:
+        if scale < 0:
+            # Scale is negative — normalization was skipped, showing raw data to avoid inversion
+            data_confidence = "LOW"
+            print(f"  Scale: {scale:.4f} — INVERSION GUARD triggered, normalization skipped")
+            print(f"  Raw attribution shown (opposite signs between raw and actual nifty)")
+        elif abs(scale) > 5.0:
             # Scale explosion — normalization was skipped, showing raw data
             data_confidence = "LOW"
             print(f"  Scale: {scale:.4f} — EXPLOSION GUARD triggered, normalization skipped")

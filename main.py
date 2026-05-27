@@ -744,10 +744,12 @@ def run_daily_pipeline(date=None, print_report=True):
             from portfolio_engine import build_portfolio
             # MODULE 2+3: alpha_scores passed in — excluded subsectors dropped,
             # score formula uses alpha_score × confidence × return / vol
-            portfolio_output = build_portfolio(
-                all_forecasts, macro_data, regime,
-                horizon="3M", alpha_scores=alpha_scores
-            )
+            portfolio_output = {}
+            for h in ["1M", "3M", "6M", "12M"]:
+                portfolio_output[h] = build_portfolio(
+                    all_forecasts, macro_data, regime,
+                    horizon=h, alpha_scores=alpha_scores
+                )
         except Exception as e:
             print(f"  Portfolio engine skipped: {e}")
 
@@ -755,7 +757,11 @@ def run_daily_pipeline(date=None, print_report=True):
         try:
             print("\n[+] Applying risk management rules...")
             from risk_engine import apply_risk_rules
-            risk_output = apply_risk_rules(portfolio_output, macro_data, regime)
+            risk_output = {}
+            if isinstance(portfolio_output, dict):
+                for h in ["1M", "3M", "6M", "12M"]:
+                    if h in portfolio_output:
+                        risk_output[h] = apply_risk_rules(portfolio_output[h], macro_data, regime)
         except Exception as e:
             print(f"  Risk engine skipped: {e}")
 

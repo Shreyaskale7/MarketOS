@@ -189,6 +189,7 @@ def compute_alpha_scores(
     moderated_output: dict,
     macro_data:       dict,
     regime:           dict,
+    force_run:        bool = False,
 ) -> dict:
     """
     SECTION 9 UPGRADES:
@@ -203,7 +204,7 @@ def compute_alpha_scores(
     print("\n=== ALPHA SIGNAL ENGINE [v3 — macro∈[0.4,1.0], thresh=0.6] ===")
 
     # TASK 4: STRICT VALIDATION — fail fast on invalid NIFTY data
-    if not macro_data.get("nifty", {}).get("is_valid", False):
+    if not macro_data.get("nifty", {}).get("is_valid", False) and not force_run:
         raise ValueError("CRITICAL: Invalid NIFTY data — aborting alpha scoring run")
 
     # ── MARKET STATE GATE ─────────────────────────────────────────
@@ -214,7 +215,10 @@ def compute_alpha_scores(
         _mkt = {"is_trading_day": True, "engine_mode": "FULL",
                 "nifty_is_valid": True, "close_reason": ""}
 
-    _market_open = _mkt.get("is_trading_day", True) and _mkt.get("nifty_is_valid", True)
+    if force_run:
+        _market_open = True
+    else:
+        _market_open = _mkt.get("is_trading_day", True) and _mkt.get("nifty_is_valid", True)
 
     if not _market_open:
         print(f"  ⚠ Market closed ({_mkt.get('close_reason', 'non-trading day')}) "

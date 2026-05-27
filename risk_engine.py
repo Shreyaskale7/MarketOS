@@ -34,7 +34,7 @@ VOL_SPIKE_MULTIPLIER       = 1.5
 VOL_SPIKE_REDUCTION        = 0.85    # was 0.80 — less aggressive
 STOP_LOSS_THRESHOLD        = -7.0    # aligned with sector drawdown
 STOP_LOSS_FACTOR           = 0.70    # was 0.50
-MAX_SECTOR_WEIGHT          = 0.28    # aligned with portfolio_engine FIX 3
+MAX_SECTOR_WEIGHT          = 0.20    # strictly no single sector above 20%
 TOP3_CAP                   = 0.65    # slightly relaxed — allows more return
 HIGH_VOL_THRESHOLD         = 28.0    # moderate vol threshold
 BEARISH_EXPOSURE_FACTOR    = 0.65    # was 0.60 — less severe
@@ -398,9 +398,23 @@ def apply_risk_rules(portfolio: dict, macro_data: dict, regime: dict) -> dict:
         print(f"  🐻 Rule 7 [BEARISH]: exposure cut to {BEARISH_EXPOSURE_FACTOR*100:.0f}%")
 
     # ── Rule 8: Sector cap ────────────────────────────────────────
+    # 1. Cap subsectors at MAX_SECTOR_WEIGHT (0.20)
     for sub in weights:
         if weights[sub]["adjusted_weight"] > MAX_SECTOR_WEIGHT:
             weights[sub]["adjusted_weight"] = MAX_SECTOR_WEIGHT
+            
+    # 2. Cap total weight per sector at MAX_SECTOR_WEIGHT (0.20)
+    sector_totals = {}
+    for sub, w in weights.items():
+        sec = w.get("sector", "")
+        sector_totals[sec] = sector_totals.get(sec, 0.0) + w["adjusted_weight"]
+    for sec, total_w in sector_totals.items():
+        if total_w > MAX_SECTOR_WEIGHT:
+            scale = MAX_SECTOR_WEIGHT / total_w
+            for sub, w in weights.items():
+                if w.get("sector", "") == sec:
+                    weights[sub]["adjusted_weight"] *= scale
+            applied_rules.append(f"Sector '{sec}' capped at {MAX_SECTOR_WEIGHT:.0%}")
 
     # ── Rule 9: Top-3 concentration ───────────────────────────────
     sorted_subs = sorted(weights.items(), key=lambda x: x[1]["adjusted_weight"], reverse=True)
@@ -419,6 +433,20 @@ def apply_risk_rules(portfolio: dict, macro_data: dict, regime: dict) -> dict:
     if total_w > 0:
         for sub in weights:
             weights[sub]["adjusted_weight"] = weights[sub]["adjusted_weight"] / total_w * min(exposure, 1.0)
+
+    # ── Post-Renormalisation Sector Cap ───────────────────────────
+    # Enforce sector-level cap of 20% again after renormalization to ensure absolute compliance
+    sector_totals = {}
+    for sub, w in weights.items():
+        sec = w.get("sector", "")
+        sector_totals[sec] = sector_totals.get(sec, 0.0) + w["adjusted_weight"]
+    for sec, total_w in sector_totals.items():
+        if total_w > MAX_SECTOR_WEIGHT:
+            scale = MAX_SECTOR_WEIGHT / total_w
+            for sub, w in weights.items():
+                if w.get("sector", "") == sec:
+                    weights[sub]["adjusted_weight"] *= scale
+            applied_rules.append(f"Post-Renorm Sector '{sec}' capped at {MAX_SECTOR_WEIGHT:.0%}")
 
     risk_flags = compute_risk_flags({"weights": weights}, macro_data, regime)
 
