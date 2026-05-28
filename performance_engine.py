@@ -251,7 +251,7 @@ def compute_performance_summary(lookback_days: int = 365) -> dict:
     if by_horizon:
         print(f"\n  BY HORIZON:")
         print(f"  {'Horizon':<8} {'N':>5} {'DirAcc':>8} {'MAE':>7} {'Bias':>8}")
-        print(f"  {'─'*45}")
+        print(f"  {'-'*45}")
         for h in sorted(by_horizon.keys()):
             m = by_horizon[h]
             print(f"  {h:<8} {m['n_forecasts']:>5} {m['direction_accuracy_pct']:>7.1f}% "

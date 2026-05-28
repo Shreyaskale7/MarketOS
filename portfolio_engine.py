@@ -151,21 +151,21 @@ def _load_correlation_matrix(lookback_days: int = VOL_LOOKBACK_DAYS) -> pd.DataF
 # THEME CAP
 # ─────────────────────────────────────────────────────────────────
 
-def _enforce_theme_cap(df: pd.DataFrame) -> pd.DataFrame:
+def _enforce_theme_cap(df: pd.DataFrame, max_sector_weight: float = 0.20) -> pd.DataFrame:
     df = df.copy()
 
-    # ── SECTOR CAP: no single sector above MAX_SECTOR_WEIGHT ─────
+    # ── SECTOR CAP: no single sector above max_sector_weight ─────
     sector_weights = {}
     for _, row in df.iterrows():
         sec = row["sector"]
         sector_weights[sec] = sector_weights.get(sec, 0.0) + row["weight"]
     for sec, total_w in sector_weights.items():
-        if total_w > MAX_SECTOR_WEIGHT:
-            scale = MAX_SECTOR_WEIGHT / total_w
+        if total_w > max_sector_weight:
+            scale = max_sector_weight / total_w
             for idx, row in df.iterrows():
                 if row["sector"] == sec:
                     df.loc[idx, "weight"] *= scale
-            print(f"  ⚠ Sector '{sec}' capped: {total_w:.1%} → {MAX_SECTOR_WEIGHT:.0%}")
+            print(f"  ⚠ Sector '{sec}' capped: {total_w:.1%} → {max_sector_weight:.0%}")
 
     # ── THEME CAP: no single theme above MAX_THEME_WEIGHT ────────
     theme_weights = {}
@@ -380,7 +380,15 @@ def build_portfolio(
     df["weight"] = df["weight"] / df["weight"].sum()
 
     # ── STEP 9: Theme cap ─────────────────────────────────────────
-    df = _enforce_theme_cap(df)
+    regime_label = regime.get("overall_regime", "NEUTRAL").upper()
+    if "BULL" in regime_label:
+        dynamic_max_sector = 0.30
+    elif "BEAR" in regime_label or "RISK_OFF" in regime_label:
+        dynamic_max_sector = 0.15
+    else:
+        dynamic_max_sector = 0.20
+        
+    df = _enforce_theme_cap(df, max_sector_weight=dynamic_max_sector)
     df["weight"] = df["weight"] / df["weight"].sum()
 
     # ── STEP 10: Correlation penalty ──────────────────────────────
