@@ -44,7 +44,12 @@ def load_macro_from_db() -> dict:
         ).first()
 
         if not row:
-            raise ValueError(f"No macro data found in DB for {target_date}")
+            # Fallback: use the most recent available macro data instead of crashing
+            row = session.query(MacroData).order_by(MacroData.date.desc()).first()
+            if not row:
+                raise ValueError(f"No macro data found in DB at all (checked {target_date} and fallback)")
+            print(f"  ⚠ No macro data for {target_date} — falling back to {row.date}")
+            target_date = row.date
 
         prev = session.query(MacroData).filter(
             MacroData.date < target_date

@@ -1,0 +1,28 @@
+databases:
+  - name: marketos-db
+    databaseName: marketos_db
+    user: marketos
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: marketos-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn marketos_api:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 600
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketos-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AUTO_BOOTSTRAP
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHON_VERSION
+        value: "3.10.14"

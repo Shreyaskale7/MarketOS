@@ -21,18 +21,14 @@ for folder in [
     os.makedirs(folder, exist_ok=True)
 
 # ── Database connection ───────────────────────────────────────────
-# In production (Railway), use /data volume mount if available
-# Locally falls back to data/marketos.db
+# In production (Docker), DATABASE_URL is set by docker-compose.
+# Locally falls back to data/marketos.db (SQLite)
 _db_path = os.getenv("DATABASE_URL")
 if _db_path and _db_path.startswith("postgres://"):
     _db_path = _db_path.replace("postgres://", "postgresql://", 1)
 
 if not _db_path:
-    # Check if running on Railway with persistent volume
-    if os.path.exists("/data"):
-        _db_path = "sqlite:////data/marketos.db"
-    else:
-        _db_path = "sqlite:///data/marketos.db"
+    _db_path = "sqlite:///data/marketos.db"
 DATABASE_URL = _db_path
 connect_args = {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 engine = create_engine(

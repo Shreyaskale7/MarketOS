@@ -27,4 +27,7 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 5001
 
 # Run the API with gunicorn
-CMD ["gunicorn", "marketos_api:app", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "120"]
+# --workers 1: Single worker to prevent bootstrap race conditions
+# --threads 4: 4 threads for concurrent request handling
+# --timeout 600: 10-minute timeout so the bootstrap data fetch doesn't get killed
+CMD ["gunicorn", "marketos_api:app", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "600"]
