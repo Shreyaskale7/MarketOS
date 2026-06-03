@@ -52,12 +52,90 @@ except ImportError:
     sys.exit(1)
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 import jwt
 import hashlib
 import uuid
+import logging
 from functools import wraps
+
+# --- Setup Logging ---
+logging.basicConfig(level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO")),
+                    format="%(asctime)s [%(levelname)s] %(message)s")
+
+# --- Setup Rate Limiting ---
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
+except ImportError:
+    class DummyLimiter:
+        def limit(self, *args, **kwargs):
+            def decorator(f): return f
+            return decorator
+    limiter = DummyLimiter()
+
+# --- Security Headers ---
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+# --- Bootstrap System ---
+try:
+    from bootstrap import BOOTSTRAP_STATE, start_bootstrap
+except ImportError:
+    BOOTSTRAP_STATE = {"is_running": False, "status": "error", "pipeline_ready": True}
+    def start_bootstrap(): pass
+
+def is_bootstrapping():
+    return BOOTSTRAP_STATE.get("is_running", False)
+
+@app.route("/")
+def root():
+    return jsonify({
+        "application": "MarketOS",
+        "version": "2.0",
+        "status": "running",
+        "health": "/api/healthcheck",
+        "docs": "/api/routes"
+    })
+
+@app.route("/dashboard")
+def dashboard():
+    # Serve the vanilla frontend
+    try:
+        with open("marketos_dashboard.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"Dashboard not found: {e}", 404
+
+@app.route("/api/bootstrap-status")
+def bootstrap_status():
+    return jsonify(BOOTSTRAP_STATE)
+
+@app.route("/api/routes")
+def get_routes():
+    routes = []
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint != 'static':
+            routes.append(rule.rule)
+    return jsonify({"routes": routes})
+
+@app.before_request
+def check_bootstrap():
+    if request.path in ["/", "/dashboard", "/api/bootstrap-status", "/api/healthcheck", "/api/health/deep", "/api/routes"]:
+        return None
+    if is_bootstrapping():
+        progress = BOOTSTRAP_STATE.get("progress", "starting")
+        return jsonify({
+            "status": "bootstrapping",
+            "message": "Initial market data is loading",
+            "progress": progress
+        }), 200
 
 # Secret key for JWT signing. In production, this MUST be an environment variable.
 JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-dev-key")
@@ -270,6 +348,31 @@ def safe_import(module_name: str):
 def healthcheck():
     return success({"message": "MarketOS API is running", "version": "2.0"})
 
+@app.route("/api/health/deep")
+def healthcheck_deep():
+    try:
+        from database import get_session, MacroData, DailyPrice, ForwardForecast
+        session = get_session()
+        db_connected = True
+        try:
+            macro_ok = session.query(MacroData).count() > 0
+            prices_ok = session.query(DailyPrice).count() > 0
+            forecasts_ok = session.query(ForwardForecast).count() > 0
+        except Exception:
+            macro_ok = prices_ok = forecasts_ok = False
+        session.close()
+    except Exception:
+        db_connected = False
+        macro_ok = prices_ok = forecasts_ok = False
+
+    return success({
+        "api": True,
+        "database": db_connected,
+        "macro_data": macro_ok,
+        "daily_prices": prices_ok,
+        "forecasts": forecasts_ok,
+        "pipeline_ready": not BOOTSTRAP_STATE["is_running"] and BOOTSTRAP_STATE["pipeline_ready"]
+    })
 
 # ─────────────────────────────────────────────────────────────────
 # ROUTE 2 — PIPELINE STATUS
@@ -1104,8 +1207,10 @@ try:
     from database import ensure_tables_exist
     ensure_tables_exist()
     print("  [OK] Database tables verified")
+    # Trigger zero-touch background bootstrapping
+    start_bootstrap()
 except Exception as e:
-    print(f"  [WARNING] Database warning: {e}")
+    print(f"  [WARNING] Database/Bootstrap warning: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))

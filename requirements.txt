@@ -28,3 +28,5 @@ python-dotenv==1.0.1
 apscheduler==3.10.4
 python-dateutil==2.9.0.post0
 pytz==2025.1
+
+Flask-Limiter==3.8.0

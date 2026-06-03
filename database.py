@@ -272,16 +272,18 @@ class UserPortfolio(Base):
 # ─────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────
+import threading
+_init_lock = threading.Lock()
+_tables_created = False
+
 def init_database():
     """Creates all tables. Safe to call multiple times."""
-    Base.metadata.create_all(engine)
+    ensure_tables_exist()
     print("Database initialised — all tables ready.")
-
 
 def get_session():
     """Returns a new database session."""
     return SessionLocal()
-
 
 def ensure_tables_exist():
     """
@@ -289,8 +291,13 @@ def ensure_tables_exist():
     Creates tables if they don't exist yet.
     Prevents 'no such table' errors.
     """
-    Base.metadata.create_all(engine)
-
+    global _tables_created
+    if _tables_created:
+        return
+    with _init_lock:
+        if not _tables_created:
+            Base.metadata.create_all(engine, checkfirst=True)
+            _tables_created = True
 
 # Auto-create tables when this module is imported
 # This ensures tables always exist before any query runs
