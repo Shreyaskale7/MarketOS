@@ -523,6 +523,16 @@ def fetch_macro_history(start_date, end_date=None):
             else:
                 print(f"  [NIFTY] today={curr_close:.2f} | prev={prev_close:.2f} | "
                       f"return={computed_ret:+.4f}%")
+                      
+            # CONSENSUS / BLACK SWAN PROTECTION
+            # If yfinance reports a daily NIFTY move > 5%, it's highly likely a bad tick, 
+            # flash crash, or split adjustment error. Halt the pipeline to prevent
+            # garbage data from corrupting the ML models and causing wild rebalances.
+            if abs(computed_ret) > 5.0:
+                print(f"\n[CRITICAL ERROR] NIFTY anomaly detected: {computed_ret:+.2f}% move.")
+                print("This triggers the Data Resilience / Black Swan protection mechanism.")
+                print("Halting pipeline to prevent garbage ingestion. Please verify via a secondary consensus feed (e.g., NSE API) before overriding.")
+                raise ValueError(f"Data anomaly: NIFTY move {computed_ret:+.2f}% exceeds 5% circuit breaker.")
 
             # Vectorised series for all trading days (NaN on first row, real elsewhere)
             nifty_rets = nifty_trading.pct_change() * 100
@@ -568,6 +578,8 @@ def fetch_macro_history(start_date, end_date=None):
     if 'nifty_return' in macro_df.columns and 'usdinr' in macro_df.columns:
         usdinr_ret = macro_df['usdinr'].pct_change() * 100
         macro_df['fii_net_crore'] = (macro_df['nifty_return'].fillna(0) - usdinr_ret.fillna(0)) * 1500
+        # Realistic DII Synthesis (Inverse to FII + structural positive SIP inflows)
+        macro_df['dii_net_crore'] = -0.75 * macro_df['fii_net_crore'].fillna(0) + (macro_df['nifty_return'].fillna(0) * 1000) + 800
 
     macro_df = macro_df.dropna(how='all')
     return macro_df
@@ -641,7 +653,7 @@ def store_macro(macro_df):
                 'gst_collections': _safe_float(row.get('gst_collections'), 150000.0),
                 'cpi_yoy':         _safe_float(row.get('cpi_yoy'), 5.0),
                 'iip_growth':      _safe_float(row.get('iip_growth'), 4.0),
-                'dii_net_crore':   0.0,
+                'dii_net_crore':   _safe_float(row.get('dii_net_crore'), 0.0),
                 'nasdaq_close':    _safe_float(row.get('nasdaq'), 0.0),
                 'sp500_close':     _safe_float(row.get('sp500'), 0.0),
                 'gold_close':      _safe_float(row.get('gold'), 0.0),

@@ -54,8 +54,183 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
+import jwt
+import hashlib
+import uuid
+from functools import wraps
+
+# Secret key for JWT signing. In production, this MUST be an environment variable.
+JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-dev-key")
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"status": "error", "message": "Missing or invalid authorization token"}), 401
+        token = auth_header.split(" ")[1]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+            request.user_id = payload.get("user_id")
+        except jwt.ExpiredSignatureError:
+            return jsonify({"status": "error", "message": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"status": "error", "message": "Invalid token"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
 # ── Global pipeline job tracker ──────────────────────────────────
 _job_status = {"running": False, "job": None, "started_at": None, "result": None}
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE 0 — AUTHENTICATION
+# ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/auth/register", methods=["POST"])
+def auth_register():
+    try:
+        data = request.json
+        email = data.get("email")
+        password = data.get("password")
+        if not email or not password:
+            return error("Email and password required"), 400
+        
+        from database import get_session, User
+        session = get_session()
+        existing = session.query(User).filter_by(email=email).first()
+        if existing:
+            session.close()
+            return error("User already exists"), 400
+        
+        new_user = User(
+            uuid=str(uuid.uuid4()),
+            email=email,
+            password_hash=hash_password(password)
+        )
+        session.add(new_user)
+        session.commit()
+        
+        token = jwt.encode({
+            "user_id": new_user.id,
+            "exp": datetime.utcnow() + timedelta(days=7)
+        }, JWT_SECRET, algorithm="HS256")
+        
+        res = {"user_id": new_user.id, "email": new_user.email, "token": token}
+        session.close()
+        return success_auth(res)
+    except Exception as e:
+        return error(str(e))
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    try:
+        data = request.json
+        email = data.get("email")
+        password = data.get("password")
+        if not email or not password:
+            return error("Email and password required"), 400
+        
+        from database import get_session, User
+        session = get_session()
+        user = session.query(User).filter_by(email=email).first()
+        if not user or user.password_hash != hash_password(password):
+            session.close()
+            return error("Invalid credentials"), 401
+            
+        token = jwt.encode({
+            "user_id": user.id,
+            "exp": datetime.utcnow() + timedelta(days=7)
+        }, JWT_SECRET, algorithm="HS256")
+        
+        session.close()
+        return success_auth({"user_id": user.id, "email": user.email, "token": token})
+    except Exception as e:
+        return error(str(e))
+
+@app.route("/api/auth/me", methods=["GET"])
+@require_auth
+def auth_me():
+    from database import get_session, User
+    session = get_session()
+    user = session.query(User).filter_by(id=request.user_id).first()
+    session.close()
+    if not user:
+        return error("User not found"), 404
+    return success_auth({"user_id": user.id, "email": user.email})
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE 0.5 — RISK PROFILING
+# ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/risk/profile", methods=["POST", "GET"])
+@require_auth
+def handle_risk_profile():
+    from database import get_session, UserRiskProfile
+    from risk_profiler import save_risk_profile
+    
+    if request.method == "POST":
+        try:
+            data = request.json
+            age = data.get("age", 30)
+            income = data.get("income", "15L - 50L")
+            horizon = data.get("horizon", "3-5Y")
+            drawdown = data.get("drawdown", "Medium (10-20%)")
+            
+            result = save_risk_profile(request.user_id, age, income, horizon, drawdown)
+            return success_auth(result)
+        except Exception as e:
+            return error(str(e))
+    else:
+        # GET request
+        session = get_session()
+        profile = session.query(UserRiskProfile).filter_by(user_id=request.user_id).first()
+        session.close()
+        if not profile:
+            return success_auth({"risk_score": None, "risk_label": "Unassessed"})
+        return success_auth({
+            "age": profile.age,
+            "income": profile.income_bracket,
+            "horizon": profile.investment_horizon,
+            "drawdown": profile.drawdown_tolerance,
+            "risk_score": profile.risk_score,
+            "risk_label": profile.risk_label
+        })
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE 0.6 — EXECUTION SANDBOX
+# ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/execute", methods=["POST"])
+@require_auth
+def handle_execution():
+    from database import get_session, UserPortfolio
+    from execution_engine import PaperBroker
+    import json
+    
+    try:
+        data = request.json
+        capital = float(data.get("capital", 100000.0))
+        
+        session = get_session()
+        # Get the latest generated portfolio for this user
+        portfolio_record = session.query(UserPortfolio).filter_by(user_id=request.user_id).order_by(UserPortfolio.generated_at.desc()).first()
+        session.close()
+        
+        if not portfolio_record:
+            return error("No portfolio generated yet. Please generate a portfolio first."), 400
+            
+        weights = json.loads(portfolio_record.portfolio_json)
+        
+        broker = PaperBroker(user_id=request.user_id, initial_capital=capital)
+        orders = broker.generate_orders(weights)
+        result = broker.execute_paper_trades(orders)
+        
+        return success_auth(result)
+    except Exception as e:
+        return error(str(e))
 
 # ─────────────────────────────────────────────────────────────────
 # HELPERS
@@ -65,6 +240,11 @@ def success(data: dict, **kwargs) -> Response:
     payload = {"status": "ok", "timestamp": datetime.utcnow().isoformat(), **kwargs}
     payload.update(data)
     return jsonify(payload)
+
+
+def success_auth(data: dict) -> Response:
+    """Auth-specific success wrapper. Returns {status: 'success', data: {...}}."""
+    return jsonify({"status": "success", "timestamp": datetime.utcnow().isoformat(), "data": data})
 
 
 def error(message: str, code: int = 500) -> Response:
@@ -158,6 +338,19 @@ def pipeline_status():
             "warning":          f"Backend partially unavailable: {str(exc)[:80]}",
         })
 
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE 2B — SENTIMENT DATA
+# ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/sentiment")
+def sentiment_data():
+    try:
+        from sentiment_engine import get_live_sentiment_all_sectors
+        sentiment = get_live_sentiment_all_sectors(force_refresh=False)
+        return success({"sentiment": sentiment})
+    except Exception as exc:
+        return error(f"Sentiment engine error: {str(exc)}")
 
 # ─────────────────────────────────────────────────────────────────
 # ROUTE 3 — MACRO DATA
@@ -263,16 +456,15 @@ def alpha_signals():
 _PORTFOLIO_CACHE = {}
 
 @app.route("/api/portfolio")
+@require_auth
 def portfolio():
     try:
         horizon = request.args.get("horizon", "3M")
         
-        # Simple cache to make UI horizon switching instant
+        # Simple cache to make UI horizon switching instant (DISABLED for live updates)
         from pipeline_utils import get_pipeline_date
         pd_date_str = str(get_pipeline_date())
         cache_key = f"{pd_date_str}_{horizon}"
-        if cache_key in _PORTFOLIO_CACHE:
-            return jsonify({"status": "ok", "portfolio": _PORTFOLIO_CACHE[cache_key]})
         from macro_engine import fetch_live_macro_data, classify_macro_regime
         from ml_forecast_engine import generate_ml_forecasts
         from portfolio_engine import build_portfolio
@@ -314,7 +506,13 @@ def portfolio():
         from alpha_engine import compute_alpha_scores
         alpha = compute_alpha_scores(moderated_output, macro, regime, force_run=True)
 
-        port    = build_portfolio(fc, macro, regime, horizon=horizon, alpha_scores=alpha, force_rebalance=True)
+        # Fetch user's risk profile
+        from database import get_session, UserRiskProfile, UserPortfolio
+        session = get_session()
+        risk_profile = session.query(UserRiskProfile).filter_by(user_id=request.user_id).first()
+        risk_label = risk_profile.risk_label if risk_profile else "Aggressive"
+
+        port    = build_portfolio(fc, macro, regime, horizon=horizon, alpha_scores=alpha, force_rebalance=True, risk_label=risk_label)
         risk_p  = apply_risk_rules(port, macro, regime)
 
         # Transform weights dict → positions array for the dashboard
@@ -333,10 +531,10 @@ def portfolio():
         # Sort by adjusted weight descending
         positions.sort(key=lambda p: p["adjusted_weight"], reverse=True)
 
-        # Compute portfolio-level metrics
+        # Extract portfolio-level metrics directly from the engine output
         total_exp = sum(p["adjusted_weight"] for p in positions)
-        exp_ret   = sum(p["adjusted_weight"] * p["expected_return_pct"] for p in positions) if positions else 0
-        port_vol  = sum(p["adjusted_weight"] * p["volatility_pct"] for p in positions) if positions else 0
+        exp_ret   = port.get("portfolio_return_pct", port.get("expected_return", 0))
+        port_vol  = port.get("portfolio_volatility_pct", port.get("portfolio_vol", 0))
         sharpe    = port.get("sharpe_like", 0)
 
         regime_label = risk_p.get("regime", regime.get("overall_regime", "NEUTRAL") if isinstance(regime, dict) else "NEUTRAL")
@@ -359,8 +557,18 @@ def portfolio():
             "horizon":             horizon,
         }
 
-        # Save to cache before returning
-        _PORTFOLIO_CACHE[cache_key] = portfolio_out
+        # Save to UserPortfolio
+        import json
+        new_portfolio = UserPortfolio(
+            user_id=request.user_id,
+            horizon=horizon,
+            risk_label=risk_label,
+            portfolio_json=json.dumps(positions),
+            execution_status="PENDING"
+        )
+        session.add(new_portfolio)
+        session.commit()
+        session.close()
 
         return success({"portfolio": portfolio_out, "horizon": horizon})
     except Exception as exc:
@@ -436,8 +644,75 @@ def forecasts():
 
 
 # ─────────────────────────────────────────────────────────────────
-# ROUTE 7 — PERFORMANCE ANALYTICS
+# ROUTE 6.5 — PAPER TRADES & RISK LIMITS
 # ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/paper-trades")
+def paper_trades():
+    try:
+        from portfolio_engine import evaluate_paper_trades, PAPER_TRADE_DIR
+        import glob
+        import json
+        
+        summary = evaluate_paper_trades() or {"total_trades": 0, "status": "NO_TRADES"}
+        
+        trades_list = []
+        if os.path.isdir(PAPER_TRADE_DIR):
+            files = sorted(glob.glob(os.path.join(PAPER_TRADE_DIR, "paper_trades_*.jsonl")))
+            for fp in files:
+                with open(fp, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            trades_list.append(json.loads(line))
+        
+        return success({
+            "summary": summary,
+            "trades": trades_list[-20:]
+        })
+    except Exception as exc:
+        return error(f"Paper trades error: {str(exc)}")
+
+
+@app.route("/api/risk-limits")
+def risk_limits():
+    try:
+        from risk_engine import (
+            MAX_DRAWDOWN_THRESHOLD,
+            MAX_SINGLE_SECTOR_WEIGHT,
+            MAX_CORRELATED_EXPOSURE,
+            MIN_SECTORS_HELD,
+            check_correlation_exposure
+        )
+        from pipeline_utils import get_pipeline_date
+        pd_date = get_pipeline_date()
+        
+        weights_dict = {}
+        try:
+            fname = f"outputs/marketos_daily_{pd_date}.json"
+            if os.path.exists(fname):
+                with open(fname, 'r') as f:
+                    data = json.load(f)
+                    weights = data.get("portfolio", {}).get("risk_adjusted", {}).get("3M", {}).get("weights", {})
+                    weights_dict = {k: v.get("adjusted_weight", 0.0) for k, v in weights.items()}
+        except Exception:
+            pass
+            
+        corr_warnings = check_correlation_exposure(weights_dict)
+        
+        return success({
+            "limits": {
+                "max_drawdown_threshold": MAX_DRAWDOWN_THRESHOLD,
+                "max_single_sector_weight": MAX_SINGLE_SECTOR_WEIGHT,
+                "max_correlated_exposure": MAX_CORRELATED_EXPOSURE,
+                "min_sectors_held": MIN_SECTORS_HELD
+            },
+            "correlation_warnings": corr_warnings,
+            "current_weights": weights_dict
+        })
+    except Exception as exc:
+        return error(f"Risk limits error: {str(exc)}")
+
 
 @app.route("/api/performance")
 def performance():
@@ -567,8 +842,75 @@ def sectors():
 
 
 # ─────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
 # ROUTE 11 — SECTOR PERFORMANCE HISTORY
 # ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/sector-historical-returns")
+def sector_historical_returns():
+    try:
+        from database import engine
+        import pandas as pd
+        from datetime import timedelta
+        from pipeline_utils import get_pipeline_date
+        
+        pd_date = get_pipeline_date()
+        
+        # Load all prices for last 3 years
+        since_date = pd_date - timedelta(days=3 * 365 + 30)
+        q = f"SELECT date, subsector, sector, daily_return FROM daily_prices WHERE date >= '{since_date}'"
+        df = pd.read_sql(q, engine)
+        if df.empty:
+            return success({"returns": []})
+        df['date'] = pd.to_datetime(df['date']).dt.date
+            
+        # Group by date and subsector to get average daily return
+        sub_daily = df.groupby(['date', 'sector', 'subsector'])['daily_return'].mean().reset_index()
+        
+        # Pivot so dates are index, subsectors are columns
+        pivot = sub_daily.pivot_table(index='date', columns=['sector', 'subsector'], values='daily_return').fillna(0)
+        
+        # Calculate cumulative returns
+        cum_ret = (1 + pivot).cumprod()
+        
+        # Get dates for 3M, 1Y, 3Y
+        dates = pivot.index.tolist()
+        if not dates: return success({"returns": []})
+        last_date = dates[-1]
+        
+        def get_closest_date(target_date):
+            valid = [d for d in dates if d <= target_date]
+            return valid[-1] if valid else dates[0]
+            
+        date_3m = get_closest_date(last_date - timedelta(days=90))
+        date_1y = get_closest_date(last_date - timedelta(days=365))
+        date_3y = get_closest_date(last_date - timedelta(days=365*3))
+        
+        results = []
+        for (sec, sub) in cum_ret.columns:
+            val_now = cum_ret.loc[last_date, (sec, sub)]
+            val_3m = cum_ret.loc[date_3m, (sec, sub)]
+            val_1y = cum_ret.loc[date_1y, (sec, sub)]
+            val_3y = cum_ret.loc[date_3y, (sec, sub)]
+            
+            ret_3m = (val_now / val_3m) - 1 if val_3m > 0 else 0
+            ret_1y = (val_now / val_1y) - 1 if val_1y > 0 else 0
+            ret_3y = (val_now / val_3y) - 1 if val_3y > 0 else 0
+            
+            results.append({
+                "sector": sec,
+                "subsector": sub,
+                "ret_3m": ret_3m * 100,
+                "ret_1y": ret_1y * 100,
+                "ret_3y": ret_3y * 100
+            })
+            
+        # Sort by 1Y return descending
+        results.sort(key=lambda x: x["ret_1y"], reverse=True)
+        return success({"returns": results})
+    except Exception as e:
+        return error(str(e))
+
 
 @app.route("/api/sector-performance")
 def sector_performance():

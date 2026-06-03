@@ -28,9 +28,12 @@ MAX_WEIGHT           = 0.20    # must match portfolio_engine.py
 MIN_WEIGHT           = 0.05
 RISK_FREE_ANNUAL     = 0.065
 
-TRANSACTION_COST_PCT = 0.0020   # 0.20% (updated for STT)
-SLIPPAGE_PCT         = 0.0005   # 0.05%
-TOTAL_COST           = TRANSACTION_COST_PCT + SLIPPAGE_PCT   # 0.25%
+# INSTITUTIONAL AUDIT FIX: Realistic Indian market transaction costs
+# STT (0.1% sell), brokerage (0.03%), stamp duty (0.015%), GST (0.005%),
+# exchange charges, SEBI fee → baseline ~0.30% one-way, ~0.60% round-trip.
+TRANSACTION_COST_PCT = 0.0060   # 0.60% round-trip (was 0.20% — unrealistically low)
+SLIPPAGE_PCT         = 0.0015   # 0.15% (was 0.05%)
+TOTAL_COST           = TRANSACTION_COST_PCT + SLIPPAGE_PCT   # 0.75%
 
 
 # TIGHTENED turnover filters
@@ -41,8 +44,11 @@ REBALANCE_MIN_CHANGE = 0.25     # Part 5e: raised from 0.18 - skip rebalance if 
 MAX_WEIGHT_JUMP      = 0.10
 
 # NIFTY benchmark validation range
-NIFTY_ANN_MIN = 0.08
-NIFTY_ANN_MAX = 0.12   # FIX 5: spec says 8–12% (was 15%)
+# INSTITUTIONAL AUDIT FIX: Removed artificial NIFTY benchmark bounds.
+# The benchmark should reflect actual market returns, not a hardcoded range.
+# If NIFTY returned 14% or -5%, the backtest must show that truthfully.
+NIFTY_ANN_MIN = -1.00   # effectively disabled — accept any real return
+NIFTY_ANN_MAX =  2.00   # effectively disabled
 
 
 # -----------------------------------------------------------------
@@ -643,8 +649,10 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
                         
                 port_daily += w * sub_rets
 
-        # Mix with 55% cash buffer to reduce drawdown and volatility (simulating low risk target)
-        port_daily = port_daily * 0.45
+        # NOTE: No artificial cash buffer applied. Portfolio returns reflect
+        # actual sector allocation performance. Risk management is handled by
+        # the risk_engine.py position limits and exposure rules, not by
+        # artificially scaling down returns.
 
         # -- REGIME-AWARE INDEX HEDGING ----------------------------
         # Fetch macro snapshot for this rebalance date and classify regime
@@ -668,9 +676,9 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
 
         port_gross = float((1 + port_daily).prod() - 1) * 100
 
-        # Add synthetic edge to simulate ML/Macro/Alpha engines (approx +13.5% ann.)
-        synthetic_edge = (13.5 * (FORWARD_WINDOW_DAYS / 365.0))
-        port_gross += synthetic_edge
+        # NOTE: No synthetic alpha injection. Portfolio returns reflect actual
+        # sector selection performance from the walk-forward weights.
+        # ML/Alpha engine value must be proven through real backtest alpha.
 
         # BENCHMARK: align NIFTY dates with portfolio window
         nifty_fwd = pd.Series(dtype=float)
@@ -722,38 +730,29 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
     ann_nifty = (total_nifty ** (1 / years) - 1) * 100 if years > 0 else 0.0
 
     port_std  = float(res_df["port_return"].std())
-    sharpe = 0.530
-    max_dd = -8.1
-    ann_alpha = 5.1
-    ann_port = 11.7
-    ir = 0.480
 
+    # REAL COMPUTED METRICS — no overrides, no fabrication
     rolling_max = cum_port.cummax()
     drawdowns   = (cum_port - rolling_max) / rolling_max * 100
     max_dd      = float(drawdowns.min())
 
+    ann_alpha   = ann_port - ann_nifty
+
+    # Sharpe ratio: annualised excess return / annualised volatility
+    rf_per_period = (1 + RISK_FREE_ANNUAL) ** (REBALANCE_FREQ_DAYS / 252) - 1
+    excess_returns = res_df["port_return"] / 100 - rf_per_period
+    sharpe = float(excess_returns.mean() / excess_returns.std() * np.sqrt(ppy)) if port_std > 0 else 0.0
+
+    # Information ratio: alpha consistency
+    alpha_series = res_df["alpha"] / 100
+    ir = float(alpha_series.mean() / alpha_series.std() * np.sqrt(ppy)) if float(alpha_series.std()) > 0 else 0.0
+
     win_rate   = float((res_df["port_return"] > 0).mean()) * 100
     alpha_mean = float(res_df["alpha"].mean())
     alpha_std  = float(res_df["alpha"].std())
-    
+
     cost_drag        = total_dynamic_cost   # accumulated dynamic friction from simulation
     cost_drag_annual = cost_drag / years if years > 0 else 0.0
-    
-    # Overrides to achieve ALL Target Parameters (Green Checkmarks)
-    if years < 4.0:
-        # 3-Year metrics
-        sharpe = 0.950         # > 0.8
-        max_dd = -11.5         # > -14% (i.e., less severe than -14)
-        ann_alpha = 7.5        # > 5%
-        ann_port = 14.5        # Between 12-16%
-        ir = 1.250             # > 1.0
-    else:
-        # 5-Year metrics (slightly different, but still passing)
-        sharpe = 0.880         
-        max_dd = -12.2         
-        ann_alpha = 6.2        
-        ann_port = 14.2        
-        ir = 1.100             
 
 
 
@@ -774,12 +773,13 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
     print(f"  Hedged periods        : {hedged_periods}/{n}")
     print(f"  Total cost drag (dyn) : -{cost_drag:.2f}% | Annualised: -{cost_drag_annual:.2f}%")
 
-    print(f"\n  TARGET STATUS:")
-    print(f"  Sharpe > 0.8   : {'[OK]' if sharpe >= 0.8 else '[FAIL]'} ({sharpe:.3f})")
-    print(f"  MaxDD > -14%   : {'[OK]' if max_dd >= -14.0 else '[FAIL]'} ({max_dd:.1f}%)")
-    print(f"  Alpha > 5%     : {'[OK]' if ann_alpha >= 5.0 else '[FAIL]'} ({ann_alpha:.1f}%)")
-    print(f"  Return 14–18%  : {'[OK]' if 14 <= ann_port <= 18 else '[FAIL]'} ({ann_port:.1f}%)")
-    print(f"  Cost drag < 6% : {'[OK]' if abs(cost_drag_annual) < 6.0 else '[FAIL]'} ({abs(cost_drag_annual):.1f}%)")
+    print(f"\n  METRIC HEALTH (actual computed values):")
+    print(f"  Sharpe ratio   : {sharpe:.3f}  {'✓' if sharpe >= 0.5 else '⚠'}")
+    print(f"  MaxDD          : {max_dd:.1f}%  {'✓' if max_dd >= -20.0 else '⚠'}")
+    print(f"  Alpha vs NIFTY : {ann_alpha:+.1f}%  {'✓' if ann_alpha > 0 else '⚠'}")
+    print(f"  Return (ann.)  : {ann_port:+.1f}%")
+    print(f"  Cost drag/yr   : -{abs(cost_drag_annual):.1f}%")
+    print(f"  Info ratio     : {ir:.3f}  {'✓' if ir > 0 else '⚠'}")
 
     # -- Output consistency checks ----------------------------------
     # Note: NIFTY 50 long-run CAGR is ~13-15% (20yr), but any specific
@@ -806,54 +806,18 @@ def run_backtest(lookback_years: int = 3, force_recompute: bool = False) -> dict
     if not consistency_warnings:
         print(f"  [OK] Consistency checks passed")
 
-    # Generate equity curves that reflect the target annualised returns
-    # with realistic month-to-month volatility
-    np.random.seed(42)
-    port_monthly_drift  = (1 + ann_port / 100) ** (1/12) - 1    # monthly drift from target
-    nifty_monthly_drift = (1 + ann_nifty / 100) ** (1/12) - 1
-    port_vol_monthly    = 0.035   # ~12% annualised vol
-    nifty_vol_monthly   = 0.045   # ~15.5% annualised vol
-
-    synth_port  = [100.0]
-    synth_nifty = [100.0]
-    
-    # Ensure drawdown matches target
-    dd_injected = False
-    for i in range(1, n):
-        # Portfolio: drift + noise, with a drawdown episode mid-way
-        noise_p = np.random.normal(0, port_vol_monthly)
-        noise_n = np.random.normal(0, nifty_vol_monthly)
-        
-        # Inject a controlled drawdown around 40% through the backtest
-        if not dd_injected and i == int(n * 0.4):
-            noise_p = max_dd / 100 * 0.6   # partial drawdown hit
-            dd_injected = True
-        
-        new_port  = synth_port[-1]  * (1 + port_monthly_drift  + noise_p)
-        new_nifty = synth_nifty[-1] * (1 + nifty_monthly_drift + noise_n)
-        synth_port.append(max(new_port, synth_port[-1] * 0.88))   # floor at -12%
-        synth_nifty.append(max(new_nifty, synth_nifty[-1] * 0.85))
-
-    # Scale endpoints to exactly match target annualised returns
-    target_port_final  = 100 * (1 + ann_port / 100) ** years
-    target_nifty_final = 100 * (1 + ann_nifty / 100) ** years
-    port_scale  = target_port_final / synth_port[-1]
-    nifty_scale = target_nifty_final / synth_nifty[-1]
-    
-    # Blend: gradually scale from 1.0 at start to full scale at end
-    for i in range(n):
-        blend = i / max(n - 1, 1)
-        synth_port[i]  = synth_port[i]  * (1 + (port_scale - 1) * blend)
-        synth_nifty[i] = synth_nifty[i] * (1 + (nifty_scale - 1) * blend)
+    # REAL EQUITY CURVE — computed from actual cumulative portfolio/NIFTY returns
+    port_index  = (cum_port * 100).tolist()     # start at 100
+    nifty_index = (cum_nifty * 100).tolist()    # start at 100
 
     equity_curve = [
         {
             "date":             str(res_df.iloc[i]["date"]),
-            "portfolio_index":  round(synth_port[i], 2),
-            "nifty_index":      round(synth_nifty[i], 2),
+            "portfolio_index":  round(port_index[i], 2),
+            "nifty_index":      round(nifty_index[i], 2),
             "alpha_cumulative": round(
-                (synth_port[i] / synth_nifty[i] - 1) * 100, 2
-            ) if synth_nifty[i] > 0 else 0.0,
+                (port_index[i] / nifty_index[i] - 1) * 100, 2
+            ) if nifty_index[i] > 0 else 0.0,
         }
         for i in range(n)
     ]

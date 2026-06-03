@@ -516,5 +516,86 @@ def apply_risk_rules(portfolio: dict, macro_data: dict, regime: dict) -> dict:
     }
 
 
+# ─────────────────────────────────────────────────────────────────
+# INSTITUTIONAL RISK LIMITS (Phase 3 — Audit Fix)
+# ─────────────────────────────────────────────────────────────────
+
+# Hard limits for institutional-grade risk management
+MAX_DRAWDOWN_THRESHOLD   = -0.15   # -15% portfolio drawdown → hard stop
+MAX_SINGLE_SECTOR_WEIGHT = 0.15    # 15% max exposure to any single subsector
+MAX_CORRELATED_EXPOSURE  = 0.40    # 40% max combined weight in highly correlated sectors
+MIN_SECTORS_HELD         = 5       # minimum diversification requirement
+
+def check_drawdown_trigger(portfolio_value_series):
+    """Returns True if max drawdown exceeds institutional threshold."""
+    if portfolio_value_series is None or len(portfolio_value_series) < 2:
+        return False, 0.0
+    cummax = portfolio_value_series.cummax()
+    drawdown = (portfolio_value_series - cummax) / cummax
+    max_dd = float(drawdown.min())
+    triggered = max_dd < MAX_DRAWDOWN_THRESHOLD
+    return triggered, max_dd
+
+
+def enforce_position_limits(weights, liquidity_scores=None):
+    """
+    Enforce institutional position limits on portfolio weights.
+    
+    Args:
+        weights: dict of {subsector: weight}
+        liquidity_scores: optional dict of {subsector: score 0-1} where
+                         lower = less liquid = tighter cap
+    Returns:
+        dict of adjusted weights (re-normalised to sum to 1.0)
+    """
+    if not weights:
+        return weights
+    
+    adjusted = {}
+    for sub, w in weights.items():
+        cap = MAX_SINGLE_SECTOR_WEIGHT
+        if liquidity_scores and sub in liquidity_scores:
+            # Less liquid sectors get tighter caps
+            liq = liquidity_scores[sub]
+            cap = max(0.05, cap * liq)  # e.g., liq=0.5 → cap=7.5%
+        adjusted[sub] = min(w, cap)
+    
+    # Re-normalise
+    total = sum(adjusted.values())
+    if total > 0:
+        adjusted = {k: v / total for k, v in adjusted.items()}
+    
+    return adjusted
+
+
+def check_correlation_exposure(weights, correlation_groups=None):
+    """
+    Check if combined weight of highly-correlated sectors exceeds limit.
+    
+    Default correlation groups for Indian markets:
+      - Banking cluster: PSU Banks, Private Banks, NBFCs
+      - IT cluster: IT Services, Digital Engineering, SaaS
+      - Energy cluster: Oil Refining, Gas Distribution, Power Gen
+    """
+    if correlation_groups is None:
+        correlation_groups = [
+            ["PSU Banks", "Private Banks", "NBFCs", "Insurance", "AMCs & Capital Markets"],
+            ["IT Services", "Digital Engineering", "AI & Data Centers / Cloud", "SaaS & Product-Based Companies"],
+            ["Oil Refining & Marketing", "Gas Distribution", "Power Generation & Utilities", "Renewable Energy"],
+        ]
+    
+    warnings = []
+    for group in correlation_groups:
+        group_weight = sum(weights.get(s, 0.0) for s in group)
+        if group_weight > MAX_CORRELATED_EXPOSURE:
+            warnings.append({
+                "group": group,
+                "combined_weight": round(group_weight, 4),
+                "limit": MAX_CORRELATED_EXPOSURE,
+                "excess": round(group_weight - MAX_CORRELATED_EXPOSURE, 4),
+            })
+    return warnings
+
+
 if __name__ == "__main__":
     print("Risk Engine v3 — run via main.py --daily")

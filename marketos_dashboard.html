@@ -91,7 +91,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .pr{display:grid;grid-template-columns:1fr 60px 60px 72px 60px 60px;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px}
 .pr:last-child{border-bottom:none}.pr:hover{background:rgba(255,255,255,.015)}
 .pr-hdr{font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border2)!important}
-.ar{display:grid;grid-template-columns:22px 1fr 52px 52px 52px 52px 52px 52px;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px}
+.ar{display:grid;grid-template-columns:22px 1fr 52px 52px 52px 52px 52px 52px 52px;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px}
 .ar:last-child{border-bottom:none}.ar:hover{background:rgba(255,255,255,.015)}
 .ar-hdr{font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border2)!important}
 .mono{font-family:var(--mono);color:var(--text2);text-align:right}
@@ -129,9 +129,119 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .company-table td{padding:6px;font-size:11px;color:var(--text2);border-bottom:1px solid rgba(255,255,255,.01)}
 .company-table tr:last-child td{border-bottom:none}
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+/* MODAL CSS */
+.modal-overlay {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,12,15,0.85);backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s;}
+.modal-overlay.active {opacity:1;pointer-events:auto;}
+.modal-content {background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:24px;width:100%;max-width:400px;box-shadow:0 10px 30px rgba(0,0,0,0.5);transform:translateY(10px);transition:transform 0.2s;}
+.modal-overlay.active .modal-content {transform:translateY(0);}
+.modal-title {font-family:var(--mono);font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.modal-sub {font-size:12px;color:var(--text2);margin-bottom:20px;}
+.input-group {margin-bottom:16px;}
+.input-group label {display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;font-weight:600;}
+.input-group input, .input-group select {width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:10px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;}
+.input-group input:focus, .input-group select:focus {border-color:var(--green);}
+.modal-btn {width:100%;background:var(--green);color:#0A0C0F;border:none;border-radius:var(--r);padding:12px;font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer;margin-top:10px;}
+.modal-btn:hover {opacity:0.9;}
+.modal-btn.secondary {background:var(--bg3);color:var(--text);border:1px solid var(--border2);margin-top:10px;}
+.modal-btn.secondary:hover {background:var(--bg4);}
+.modal-switch {text-align:center;font-size:12px;color:var(--text2);margin-top:16px;}
+.modal-switch a {color:var(--green);text-decoration:none;cursor:pointer;}
+.modal-switch a:hover {text-decoration:underline;}
+.auth-user-badge {display:none;align-items:center;gap:10px;margin-left:auto;padding-right:10px;}
+.auth-email {font-size:11px;color:var(--text2);}
+.auth-risk {font-family:var(--mono);font-size:10px;font-weight:700;padding:4px 10px;border-radius:12px;background:var(--bg4);border:1px solid var(--border);}
+.auth-risk.Aggressive {color:var(--red);border-color:rgba(255,71,87,0.3);}
+.auth-risk.Moderate {color:var(--yellow);border-color:rgba(255,184,0,0.3);}
+.auth-risk.Conservative {color:var(--green);border-color:rgba(0,212,170,0.3);}
+.auth-logout {cursor:pointer;color:var(--text3);font-size:11px;}
+.auth-logout:hover {color:var(--red);}
 </style>
 </head>
 <body>
+<!-- AUTH & RISK MODALS -->
+<div class="modal-overlay" id="auth-modal">
+  <div class="modal-content" id="login-view">
+    <div class="modal-title">MARKET<span>OS</span> LOGIN</div>
+    <div class="modal-sub">Enter your institutional credentials.</div>
+    <div class="input-group">
+      <label>Email Address</label>
+      <input type="email" id="login-email" placeholder="quant@fund.com">
+    </div>
+    <div class="input-group">
+      <label>Password</label>
+      <input type="password" id="login-pwd" placeholder="••••••••">
+    </div>
+    <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none;"></div>
+    <button class="modal-btn" onclick="doLogin()">Authenticate</button>
+    <div class="modal-switch">No account? <a onclick="toggleAuthView('register')">Register here</a></div>
+  </div>
+
+  <div class="modal-content" id="register-view" style="display:none;">
+    <div class="modal-title">CREATE ACCOUNT</div>
+    <div class="modal-sub">Join MarketOS Platform.</div>
+    <div class="input-group">
+      <label>Email Address</label>
+      <input type="email" id="reg-email" placeholder="quant@fund.com">
+    </div>
+    <div class="input-group">
+      <label>Password</label>
+      <input type="password" id="reg-pwd" placeholder="••••••••">
+    </div>
+    <div id="reg-err" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none;"></div>
+    <button class="modal-btn" onclick="doRegister()">Register</button>
+    <div class="modal-switch">Already have an account? <a onclick="toggleAuthView('login')">Login here</a></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="risk-modal">
+  <div class="modal-content">
+    <div class="modal-title">SEBI RISK PROFILING</div>
+    <div class="modal-sub">Required compliance check before portfolio generation.</div>
+    
+    <div class="input-group">
+      <label>1. Age Group</label>
+      <select id="risk-age">
+        <option value="25">&lt; 30 Years</option>
+        <option value="35">30 - 45 Years</option>
+        <option value="50">46 - 60 Years</option>
+        <option value="65">&gt; 60 Years</option>
+      </select>
+    </div>
+    
+    <div class="input-group">
+      <label>2. Annual Income</label>
+      <select id="risk-income">
+        <option value="> 50L">&gt; 50 Lakhs</option>
+        <option value="15L - 50L">15L - 50 Lakhs</option>
+        <option value="5L - 15L">5L - 15 Lakhs</option>
+        <option value="< 5L">&lt; 5 Lakhs</option>
+      </select>
+    </div>
+    
+    <div class="input-group">
+      <label>3. Investment Horizon</label>
+      <select id="risk-horizon">
+        <option value="> 5Y">&gt; 5 Years</option>
+        <option value="3-5Y">3 - 5 Years</option>
+        <option value="1-3Y">1 - 3 Years</option>
+        <option value="< 1Y">&lt; 1 Year</option>
+      </select>
+    </div>
+    
+    <div class="input-group">
+      <label>4. Max Drawdown Tolerance</label>
+      <select id="risk-drawdown">
+        <option value="High (>20%)">High (&gt;20%)</option>
+        <option value="Medium (10-20%)">Medium (10-20%)</option>
+        <option value="Low (<10%)">Low (&lt;10%)</option>
+      </select>
+    </div>
+    
+    <div id="risk-err" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none;"></div>
+    <button class="modal-btn" onclick="submitRiskProfile()">Submit Profile</button>
+  </div>
+</div>
+
 <header class="topbar">
   <div class="logo">MARKET<span>OS</span></div>
   <div class="nifty-block">
@@ -146,9 +256,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="pill"><span class="pill-l">DII</span><span class="pill-v" id="tb-dii">—</span></div>
     <div class="pill"><span class="pill-l">DATE</span><span class="pill-v" id="tb-date">—</span></div>
   </div>
-  <div class="regime neut" id="tb-regime">—</div>
+  
+  <div class="auth-user-badge" id="auth-badge">
+    <span class="auth-email" id="auth-email-display">user@fund.com</span>
+    <span class="auth-risk" id="auth-risk-display">Moderate</span>
+    <span class="auth-logout" onclick="doLogout()">[Logout]</span>
+  </div>
+
+  <div class="regime neut" id="tb-regime" style="margin-left:auto">—</div>
   <div class="dot off" id="tb-dot"></div>
-  <button class="run-btn" id="run-btn" onclick="runPipeline()">▶ RUN DAILY</button>
+  <button class="run-btn" id="run-btn" onclick="runPipeline()" style="margin-left:10px">▶ RUN DAILY</button>
 </header>
 
 <div class="layout">
@@ -162,14 +279,23 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <button class="nav" data-s="sectors"     onclick="go('sectors')"     title="Sectors">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
     </button>
+    <button class="nav" data-s="history"     onclick="go('history')"     title="Sector Past Returns">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    </button>
     <button class="nav" data-s="alpha"       onclick="go('alpha')"       title="Alpha">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    </button>
+    <button class="nav" data-s="sentiment"   onclick="go('sentiment')"   title="Sentiment">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
     </button>
     <button class="nav" data-s="forecasts"   onclick="go('forecasts')"   title="Forecasts">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
     </button>
     <button class="nav" data-s="portfolio"   onclick="go('portfolio')"   title="Portfolio">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </button>
+    <button class="nav" data-s="papertrades"  onclick="go('papertrades')" title="Paper Trades">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
     </button>
     <div class="divider"></div>
     <button class="nav" data-s="backtest"    onclick="go('backtest')"    title="Backtest">
@@ -248,8 +374,26 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
         <div style="font-size:11px;color:var(--text3)" id="alpha-sum">—</div>
       </div>
       <div class="card">
-        <div class="ar ar-hdr"><span>#</span><span>Subsector</span><span style="text-align:right">Alpha</span><span style="text-align:right">Mom</span><span style="text-align:right">MRev</span><span style="text-align:right">Vol</span><span style="text-align:right">Macro</span><span style="text-align:right">Status</span></div>
+        <div class="ar ar-hdr"><span>#</span><span>Subsector</span><span style="text-align:right">Alpha</span><span style="text-align:right">Mom</span><span style="text-align:right">MRev</span><span style="text-align:right">Vol</span><span style="text-align:right">Macro</span><span style="text-align:right">Sent</span><span style="text-align:right">Status</span></div>
         <div id="alpha-rows"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="sec-history" class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">Sector Past Returns (3M, 1Y, 3Y)</div>
+      <div class="card" style="margin-bottom:14px">
+        <table class="tbl"><thead><tr>
+          <th>Sector</th><th>Subsector</th><th class="r">3M Return</th><th class="r">1Y Return</th><th class="r">3Y Return</th>
+        </tr></thead><tbody id="history-tbody"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- SENTIMENT -->
+    <div id="sec-sentiment" class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">LLM Sentiment Intelligence</div>
+      <div id="sentiment-grid" class="g3">
+        <div class="empty">Loading sentiment...</div>
       </div>
     </div>
 
@@ -284,10 +428,59 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
         <div class="card"><div class="card-title">Portfolio Metrics</div><div id="port-metrics"><div class="empty">Loading...</div></div></div>
       </div>
       <div class="card" style="margin-bottom:14px">
-        <div class="pr pr-hdr"><span>Subsector</span><span style="text-align:right">Raw Wt</span><span style="text-align:right">Adj Wt</span><span style="text-align:right">Exp Ret</span><span style="text-align:right">Vol</span><span style="text-align:right">Alpha</span></div>
+        <div class="pr pr-hdr"><span>Subsector</span><span style="text-align:right">Raw Wt</span><span style="text-align:right">Adj Wt</span><span style="text-align:right">Exp Alpha</span><span style="text-align:right">Vol</span><span style="text-align:right">Alpha</span></div>
         <div id="port-rows"><div class="empty">Loading...</div></div>
       </div>
-      <div class="card"><div class="card-title">Risk Rules Applied</div><div id="risk-rules"><div class="empty">—</div></div></div>
+      <div class="card" style="margin-bottom:14px"><div class="card-title">Risk Rules Applied</div><div id="risk-rules"><div class="empty">—</div></div></div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">Institutional Risk Limits Check</div>
+        <div class="g4" id="risk-limits-grid" style="margin-bottom:12px">
+          <div class="scard"><div class="sl">Max Drawdown Limit</div><div class="sv" id="rl-drawdown">—</div><div class="ss">Threshold: -15%</div></div>
+          <div class="scard"><div class="sl">Single Sector Exposure</div><div class="sv" id="rl-single-sector">—</div><div class="ss">Limit: 15%</div></div>
+          <div class="scard"><div class="sl">Correlated Exposure</div><div class="sv" id="rl-correlation">—</div><div class="ss">Limit: 40%</div></div>
+          <div class="scard"><div class="sl">Min Sectors Held</div><div class="sv" id="rl-min-sectors">—</div><div class="ss">Limit: >= 5</div></div>
+        </div>
+        <div id="rl-correlation-warnings" style="font-size:11px;color:var(--text2)"></div>
+      </div>
+      
+      <!-- EXECUTION SANDBOX OUTPUT -->
+      <div class="card" style="margin-bottom:14px; background:var(--bg3);">
+        <div class="card-title" style="justify-content:space-between;">
+          <span>Execution Sandbox</span>
+          <button class="run-btn" id="exec-btn" onclick="executePaperTrades()" style="margin:0;">EXECUTE BROKER ORDERS</button>
+        </div>
+        <div id="exec-output" style="display:none; font-family:var(--mono); font-size:11px; background:var(--bg); border:1px solid var(--border); padding:14px; border-radius:var(--r); color:var(--text2); overflow-x:auto; white-space:pre-wrap;">
+          Waiting for execution...
+        </div>
+      </div>
+    </div>
+
+    <!-- PAPER TRADES -->
+    <div id="sec-papertrades" class="sec">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">Paper Trading Ledger</div>
+      <div class="g3" style="margin-bottom:14px">
+        <div class="scard"><div class="sl">Total Paper Trades</div><div class="sv" id="pt-total">—</div><div class="ss" id="pt-date-range">no range</div></div>
+        <div class="scard"><div class="sl">Ledger Status</div><div class="sv" id="pt-status">—</div><div class="ss">live out-of-sample tracking</div></div>
+        <div class="scard"><div class="sl">Latest Trade NIFTY Return</div><div class="sv" id="pt-bench">—</div><div class="ss">benchmark performance</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recent Paper Trade Logs</div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Timestamp</th>
+                <th class="r">NIFTY Return</th>
+                <th>Sector Allocations</th>
+              </tr>
+            </thead>
+            <tbody id="pt-tbody">
+              <tr><td colspan="4" class="empty">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- BACKTEST -->
@@ -306,6 +499,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
         <div class="bm"><div class="bm-l">Sharpe Ratio</div><div class="bm-v n" id="bt-sharpe">—</div></div>
         <div class="bm"><div class="bm-l">Max Drawdown</div><div class="bm-v y" id="bt-dd">—</div></div>
         <div class="bm"><div class="bm-l">Information Ratio</div><div class="bm-v g" id="bt-ir">—</div></div>
+        <div class="bm"><div class="bm-l">Annual Cost Drag (STT/GST)</div><div class="bm-v r" id="bt-cost-annual">—</div></div>
+        <div class="bm"><div class="bm-l">Total Friction Drag</div><div class="bm-v r" id="bt-cost-total">—</div></div>
       </div>
       <div class="g2">
         <div class="card span2"><div class="card-title">Equity Curve — Portfolio vs NIFTY</div><div class="ch-lg"><canvas id="ch-equity"></canvas></div></div>
@@ -357,12 +552,179 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 const API = 'http://localhost:5001';
 
 // ─────────────────────────────────────────────────────────────────
-// STATE
+// STATE & AUTH
 // ─────────────────────────────────────────────────────────────────
 const _ch = {};
 let _fcData = [];
 let _portH  = '3M';
 let _btYrs  = 3;
+
+let _token = localStorage.getItem('marketos_token');
+let _user = null;
+
+// Helper to inject Auth token into all fetch requests
+async function fetchAPI(endpoint, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (_token) headers['Authorization'] = `Bearer ${_token}`;
+  
+  const response = await fetch(`${API}${endpoint}`, { ...options, headers });
+  
+  if (response.status === 401) {
+    doLogout();
+    return null; // Unauthorized
+  }
+  return response.json();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AUTH & RISK LOGIC
+// ─────────────────────────────────────────────────────────────────
+function toggleAuthView(view) {
+  document.getElementById('login-view').style.display = view === 'login' ? 'block' : 'none';
+  document.getElementById('register-view').style.display = view === 'register' ? 'block' : 'none';
+}
+
+function doLogout() {
+  localStorage.removeItem('marketos_token');
+  _token = null;
+  _user = null;
+  document.getElementById('auth-badge').style.display = 'none';
+  document.getElementById('auth-modal').classList.add('active');
+  toggleAuthView('login');
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value;
+  const pwd = document.getElementById('login-pwd').value;
+  const err = document.getElementById('login-err');
+  err.style.display = 'none';
+  
+  try {
+    const res = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email, password: pwd})
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      _token = data.data.token;
+      localStorage.setItem('marketos_token', _token);
+      document.getElementById('auth-modal').classList.remove('active');
+      initApp();
+    } else {
+      err.textContent = data.message || "Login failed";
+      err.style.display = 'block';
+    }
+  } catch (e) {
+    err.textContent = "Server error"; err.style.display = 'block';
+  }
+}
+
+async function doRegister() {
+  const email = document.getElementById('reg-email').value;
+  const pwd = document.getElementById('reg-pwd').value;
+  const err = document.getElementById('reg-err');
+  err.style.display = 'none';
+  
+  try {
+    const res = await fetch(`${API}/api/auth/register`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email, password: pwd})
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      _token = data.data.token;
+      localStorage.setItem('marketos_token', _token);
+      document.getElementById('auth-modal').classList.remove('active');
+      initApp();
+    } else {
+      err.textContent = data.message || "Registration failed";
+      err.style.display = 'block';
+    }
+  } catch (e) {
+    err.textContent = "Server error"; err.style.display = 'block';
+  }
+}
+
+async function checkRiskProfile() {
+  const data = await fetchAPI('/api/risk/profile');
+  if (data && data.status === 'success') {
+    const risk = data.data;
+    if (!risk.risk_score) {
+      document.getElementById('risk-modal').classList.add('active');
+    } else {
+      document.getElementById('auth-risk-display').textContent = risk.risk_label;
+      document.getElementById('auth-risk-display').className = `auth-risk ${risk.risk_label}`;
+      document.getElementById('auth-badge').style.display = 'flex';
+      document.getElementById('auth-email-display').textContent = _user.email;
+    }
+  }
+}
+
+async function submitRiskProfile() {
+  const age = document.getElementById('risk-age').value;
+  const income = document.getElementById('risk-income').value;
+  const horizon = document.getElementById('risk-horizon').value;
+  const drawdown = document.getElementById('risk-drawdown').value;
+  
+  const data = await fetchAPI('/api/risk/profile', {
+    method: 'POST',
+    body: JSON.stringify({age: parseInt(age), income, horizon, drawdown})
+  });
+  
+  if (data && data.status === 'success') {
+    document.getElementById('risk-modal').classList.remove('active');
+    checkRiskProfile(); // refresh badge
+  } else {
+    const err = document.getElementById('risk-err');
+    err.textContent = data?.message || "Failed to save profile";
+    err.style.display = 'block';
+  }
+}
+
+async function executePaperTrades() {
+  const btn = document.getElementById('exec-btn');
+  const out = document.getElementById('exec-output');
+  btn.textContent = 'EXECUTING...';
+  out.style.display = 'block';
+  out.textContent = 'Connecting to execution engine...\n';
+  
+  const data = await fetchAPI('/api/execute', {
+    method: 'POST',
+    body: JSON.stringify({capital: 100000})
+  });
+  
+  btn.textContent = 'EXECUTE BROKER ORDERS';
+  
+  if (data && data.status === 'success') {
+    out.textContent = JSON.stringify(data.data, null, 2);
+  } else {
+    out.textContent = "Error: " + (data?.message || "Execution failed");
+  }
+}
+
+async function initAuth() {
+  if (!_token) {
+    document.getElementById('auth-modal').classList.add('active');
+    return;
+  }
+  const data = await fetchAPI('/api/auth/me');
+  if (data && data.status === 'success') {
+    _user = data.data;
+    initApp();
+  } else {
+    doLogout();
+  }
+}
+
+function initApp() {
+  checkRiskProfile();
+  getStatus();
+  setInterval(getStatus, 10000); // 10s poll
+  go('overview');
+}
+
 
 // ─────────────────────────────────────────────────────────────────
 // HELPERS
@@ -399,9 +761,9 @@ function go(id){
   document.querySelectorAll('.nav').forEach(b=>b.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('on');
   document.querySelector(`[data-s="${id}"]`).classList.add('active');
-  ({overview:loadOverview,macro:loadMacro,sectors:loadSectors,alpha:loadAlpha,
-    forecasts:loadForecasts,portfolio:loadPortfolio,backtest:()=>loadBt(_btYrs),
-    performance:loadPerformance,insights:loadInsights})[id]?.();
+  ({overview:loadOverview,macro:loadMacro,sectors:loadSectors,history:loadHistory,alpha:loadAlpha,sentiment:loadSentiment,
+    forecasts:loadForecasts,portfolio:()=>{ loadPortfolio(); loadRiskLimits(); },backtest:()=>loadBt(_btYrs),
+    performance:loadPerformance,insights:loadInsights,papertrades:loadPaperTrades})[id]?.();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -413,7 +775,7 @@ async function loadTopbar(){
   try{
     // NOTE: success() in marketos_api.py does payload.update(data)
     // so ALL fields are at the ROOT of the JSON — NOT under d.data
-    const d = await fetch(`${API}/api/status`).then(r=>r.json());
+    const d = await fetchAPI(`/api/status`);
 
     const lvl = d.nifty?.level;
     const ret = d.nifty?.return_pct;
@@ -466,7 +828,7 @@ async function loadTopbar(){
   }catch(e){ console.warn('Status error',e); }
 
   try{
-    const d = await fetch(`${API}/api/macro`).then(r=>r.json());
+    const d = await fetchAPI(`/api/macro`);
     // ROOT level: d.macro = {india_vix:{current,change_pct,regime,score}, usdinr:{...}, brent_crude:{...}, fii_flows:{estimated_crore,signal}}
     const m = d.macro || {};
 
@@ -496,7 +858,7 @@ async function loadOverview(){
   loadTopbar();
   // NIFTY chart from macro-history
   try{
-    const d = await fetch(`${API}/api/macro-history?days=30`).then(r=>r.json());
+    const d = await fetchAPI(`/api/macro-history?days=30`);
     // ROOT: d.macro_history = [{date,nifty_close,india_vix,brent_crude,usdinr,fii_net_crore}]
     const h = d.macro_history||[];
     if(h.length){
@@ -514,7 +876,7 @@ async function loadOverview(){
 
   // Top opportunities from forecasts
   try{
-    const d = await fetch(`${API}/api/forecasts`).then(r=>r.json());
+    const d = await fetchAPI(`/api/forecasts`);
     // ROOT: d.forecasts = [{sector,subsector,horizon,base_case_return,bull_case_return,bear_case_return,confidence_score,opportunity_score,...}]
     const rows=(d.forecasts||[]).filter(x=>x.horizon==='3M').sort((a,b)=>(b.opportunity_score||0)-(a.opportunity_score||0)).slice(0,5);
     const el=document.getElementById('ov-opps');
@@ -530,7 +892,7 @@ async function loadOverview(){
 
   // Sector snapshot
   try{
-    const d = await fetch(`${API}/api/sector-performance?days=1`).then(r=>r.json());
+    const d = await fetchAPI(`/api/sector-performance?days=1`);
     // ROOT: d.sector_performance = [{date,sector,subsector,sector_return,subsector_return,macro_alignment,...}]
     const rows=d.sector_performance||[];
     const byS={};
@@ -544,7 +906,7 @@ async function loadOverview(){
 
   // Latest insight
   try{
-    const d = await fetch(`${API}/api/insights?limit=1`).then(r=>r.json());
+    const d = await fetchAPI(`/api/insights?limit=1`);
     // ROOT: d.insights = [{date,full_insight,what_text,regime_label,nifty_return,top_sector}]
     const ins=(d.insights||[])[0];
     if(ins){
@@ -559,7 +921,7 @@ async function loadOverview(){
 // ─────────────────────────────────────────────────────────────────
 async function loadMacro(){
   try{
-    const d = await fetch(`${API}/api/macro`).then(r=>r.json());
+    const d = await fetchAPI(`/api/macro`);
     // ROOT: d.macro = {india_vix,usdinr,brent_crude,repo_rate,fii_flows}
     // ROOT: d.regime = {overall_regime,regime_score,legacy_score,bull_bear_label}
     const m=d.macro||{}, rg=d.regime||{};
@@ -609,7 +971,7 @@ async function loadMacro(){
 
   // History charts
   try{
-    const d=await fetch(`${API}/api/macro-history?days=30`).then(r=>r.json());
+    const d=await fetchAPI(`/api/macro-history?days=30`);
     const h=d.macro_history||[]; if(!h.length) return;
     const lb=h.map(x=>x.date.slice(5)),nc=h.map(x=>x.nifty_close),fi=h.map(x=>x.fii_net_crore||0),vx=h.map(x=>x.india_vix),cr=h.map(x=>x.brent_crude);
     destroyChart('nifty-fii');
@@ -632,7 +994,7 @@ async function loadSectors(){
   const NWTS={'Banking & Financial Services':38,'IT & Technology':15,'Energy & Oil & Gas':13,'Pharmaceuticals':5,'Consumer Goods & Retail':10,'Automobiles':7,'Infrastructure & Real Estate':7};
   const DRVS={'Banking & Financial Services':'repo_rate','IT & Technology':'usdinr','Energy & Oil & Gas':'brent_crude','Pharmaceuticals':'usdinr','Consumer Goods & Retail':'gdp_growth','Automobiles':'repo_rate','Infrastructure & Real Estate':'repo_rate'};
   try{
-    const d=await fetch(`${API}/api/sector-performance?days=1`).then(r=>r.json());
+    const d=await fetchAPI(`/api/sector-performance?days=1`);
     // ROOT: d.sector_performance = [{date,sector,subsector,sector_return,subsector_return,macro_alignment,regime_label}]
     const rows=d.sector_performance||[];
     const byS={};
@@ -648,7 +1010,7 @@ async function loadSectors(){
   }catch(e){document.getElementById('sector-tbody').innerHTML='<tr><td colspan="8" class="empty">Run pipeline first</td></tr>';}
 
   try{
-    const d=await fetch(`${API}/api/sector-performance?days=30`).then(r=>r.json());
+    const d=await fetchAPI(`/api/sector-performance?days=30`);
     const rows=d.sector_performance||[];
     const CLR={'Banking & Financial Services':'#00D4AA','IT & Technology':'#0099FF','Energy & Oil & Gas':'#FF6B35','Pharmaceuticals':'#9B59FF','Consumer Goods & Retail':'#FFB800','Automobiles':'#FF4757','Infrastructure & Real Estate':'#2ECC71'};
     const dates=[...new Set(rows.map(r=>r.date))].sort().slice(-20);
@@ -661,7 +1023,7 @@ async function loadSectors(){
   }catch(e){}
 
   try{
-    const d=await fetch(`${API}/api/sectors`).then(r=>r.json());
+    const d=await fetchAPI(`/api/sectors`);
     const secs = d.sectors || {};
     const el = document.getElementById('sector-class');
     if(!Object.keys(secs).length) { el.innerHTML='<div class="empty">No classification data</div>'; }
@@ -691,7 +1053,7 @@ async function loadSectors(){
 // ─────────────────────────────────────────────────────────────────
 async function loadAlpha(){
   try{
-    const d=await fetch(`${API}/api/alpha`).then(r=>r.json());
+    const d=await fetchAPI(`/api/alpha`);
     // ROOT: d.alpha = {subsector_name:{alpha_score,momentum,mean_reversion,vol_breakout,macro_alignment,signal_rank,excluded}}
     const alpha=d.alpha||{};
     const entries=Object.entries(alpha).sort((a,b)=>a[1].signal_rank-b[1].signal_rank);
@@ -706,9 +1068,54 @@ async function loadAlpha(){
         <span class="mono">${f(sc.mean_reversion,3)}</span>
         <span class="mono">${f(sc.vol_breakout,3)}</span>
         <span class="mono">${f(sc.macro_alignment,3)}</span>
+        <span class="mono">${f(sc.sentiment,3)}</span>
         <span class="badge ${sc.excluded?'y':'g'}">${sc.excluded?'EXCL':'PASS'}</span>
       </div>`).join('');
   }catch(e){document.getElementById('alpha-rows').innerHTML='<div class="empty">Alpha unavailable — run pipeline first</div>';}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SENTIMENT
+// ─────────────────────────────────────────────────────────────────
+async function loadSentiment(){
+  try{
+    const d=await fetchAPI(`/api/sentiment`);
+    const data=d.sentiment||{};
+    const grid=document.getElementById('sentiment-grid');
+    if(!Object.keys(data).length){grid.innerHTML='<div class="empty">No sentiment data</div>';return;}
+    
+    grid.innerHTML=Object.entries(data).map(([sec,v])=>{
+      const score=v.sentiment_score||0;
+      const label=v.bullish_bearish_label||'NEUTRAL';
+      const cLabel=label==='BULLISH'?'g':label==='BEARISH'?'r':'y';
+      return `<div class="card" style="margin-bottom:0;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:10px">
+          <div style="font-weight:600;font-size:12px">${sec}</div>
+          <div class="badge ${cLabel}">${label} ${f(score,1)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);line-height:1.6;flex:1">${v.rationale||'No rationale'}</div>
+      </div>`;
+    }).join('');
+  }catch(e){document.getElementById('sentiment-grid').innerHTML='<div class="empty">Failed to load sentiment</div>';}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// HISTORY
+// ─────────────────────────────────────────────────────────────────
+async function loadHistory(){
+  try{
+    const d=await fetchAPI(`/api/sector-historical-returns`);
+    const rows=d.returns||[];
+    const tb=document.getElementById('history-tbody');
+    if(!rows.length){tb.innerHTML='<tr><td colspan="5" class="empty">No data</td></tr>';return;}
+    tb.innerHTML=rows.map(r=>`<tr>
+      <td style="color:var(--text3)">${r.sector}</td>
+      <td style="font-weight:500">${r.subsector}</td>
+      <td class="r" style="font-family:var(--mono);${cs(r.ret_3m)}">${pct(r.ret_3m,2,true)}</td>
+      <td class="r" style="font-family:var(--mono);${cs(r.ret_1y)}">${pct(r.ret_1y,2,true)}</td>
+      <td class="r" style="font-family:var(--mono);${cs(r.ret_3y)}">${pct(r.ret_3y,2,true)}</td>
+    </tr>`).join('');
+  }catch(e){document.getElementById('history-tbody').innerHTML='<tr><td colspan="5" class="empty">Failed to load history</td></tr>';}
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -716,7 +1123,7 @@ async function loadAlpha(){
 // ─────────────────────────────────────────────────────────────────
 async function loadForecasts(){
   try{
-    const d=await fetch(`${API}/api/forecasts`).then(r=>r.json());
+    const d=await fetchAPI(`/api/forecasts`);
     // ROOT: d.forecasts = [{sector,subsector,horizon,base_case_return,bull_case_return,bear_case_return,confidence_score,opportunity_score}]
     _fcData=d.forecasts||[];
     renderFc('1M');
@@ -751,13 +1158,13 @@ function renderFc(h){
 // ─────────────────────────────────────────────────────────────────
 async function loadPortfolio(){
   try{
-    const d=await fetch(`${API}/api/portfolio?horizon=${_portH}`).then(r=>r.json());
+    const d=await fetchAPI(`/api/portfolio?horizon=${_portH}`);
     const p=d.portfolio||{};
     const positions=p.positions||p.allocations||[];
     const rules=p.rules_applied||p.risk_rules_applied||[];
 
     document.getElementById('port-metrics').innerHTML=[
-      {l:'Expected Return',v:pct(p.expected_return_pct||p.expected_return,1,true),s:cs(p.expected_return_pct||p.expected_return)},
+      {l:'Expected Alpha',v:pct(p.expected_return_pct||p.expected_return,1,true),s:cs(p.expected_return_pct||p.expected_return)},
       {l:'Portfolio Vol',  v:pct(p.portfolio_vol_pct||p.portfolio_vol,1),s:''},
       {l:'Sharpe (est.)', v:f(p.sharpe_like,3),s:''},
       {l:'Total Exposure', v:pct((p.total_exposure_pct||1)*100,1),s:''},
@@ -796,9 +1203,9 @@ async function loadBt(yrs,btn){
   _btYrs=yrs;
   if(btn){document.querySelectorAll('#sec-backtest .tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
   try{
-    const d=await fetch(`${API}/api/backtest?years=${yrs}`).then(r=>r.json());
+    const d=await fetchAPI(`/api/backtest?years=${yrs}`);
     const bt=d.backtest||{}, m=bt.metrics||{};
-    document.getElementById('bt-sub').textContent=`${yrs}-year · ${bt.actual_rebalances||bt.n_periods||'—'} periods · 0.2% cost`;
+    document.getElementById('bt-sub').textContent=`${yrs}-year · ${bt.actual_rebalances||bt.n_periods||'—'} periods · 0.75% institutional friction modeled`;
     const pr=m.portfolio_annualised_return_pct,nr=m.nifty_annualised_return_pct,al=m.net_alpha_pct,sh=m.sharpe_ratio,dd=m.max_drawdown_pct,ir=m.information_ratio;
     document.getElementById('bt-ret').textContent   =pr!=null?pct(pr,2,true):'—';
     document.getElementById('bt-nifty').textContent =nr!=null?pct(nr,2,true):'—';
@@ -806,6 +1213,9 @@ async function loadBt(yrs,btn){
     document.getElementById('bt-sharpe').textContent=sh!=null?f(sh,3):'—';
     document.getElementById('bt-dd').textContent    =dd!=null?pct(dd,2):'—';
     document.getElementById('bt-ir').textContent    =ir!=null?f(ir,3):'—';
+    const cda=m.cost_drag_annual_pct, cdt=m.cost_drag_total_pct;
+    document.getElementById('bt-cost-annual').textContent = cda!=null?pct(cda,2,false):'—';
+    document.getElementById('bt-cost-total').textContent  = cdt!=null?pct(cdt,2,false):'—';
     if(sh!=null) document.getElementById('bt-sharpe').className='bm-v '+(sh>=.8?'g':sh>=.5?'y':'r');
     if(dd!=null) document.getElementById('bt-dd').className='bm-v '+(dd>=-14?'g':dd>=-20?'y':'r');
     if(ir!=null) document.getElementById('bt-ir').className='bm-v '+(ir>=1?'g':ir>=.5?'y':'n');
@@ -869,7 +1279,7 @@ async function loadBt(yrs,btn){
 // ─────────────────────────────────────────────────────────────────
 async function loadPerformance(){
   try{
-    const d=await fetch(`${API}/api/performance`).then(r=>r.json());
+    const d=await fetchAPI(`/api/performance`);
     const pf=d.performance||{}, ov=pf.overall||{};
     const acc=ov.direction_accuracy_pct;
     document.getElementById('pf-acc').textContent =acc!=null?pct(acc,1):'—';
@@ -897,7 +1307,7 @@ async function loadPerformance(){
 // ─────────────────────────────────────────────────────────────────
 async function loadInsights(){
   try{
-    const d=await fetch(`${API}/api/insights?limit=7`).then(r=>r.json());
+    const d=await fetchAPI(`/api/insights?limit=7`);
     const ins=d.insights||[];
     const el=document.getElementById('insights-list');
     if(!ins.length){el.innerHTML='<div class="empty">No insights stored — run pipeline first</div>';return;}
@@ -950,16 +1360,106 @@ async function runPipeline(){
   const btn=document.getElementById('run-btn');
   btn.disabled=true; btn.textContent='⏳ Running...';
   try{
-    await fetch(`${API}/api/run/daily`,{method:'POST'});
+    await fetchAPI(`/api/run/daily`, {method:'POST'});
     setTimeout(()=>{btn.disabled=false;btn.textContent='▶ RUN DAILY';loadTopbar();},60000);
   }catch(e){btn.disabled=false;btn.textContent='▶ RUN DAILY';}
+}
+
+async function loadRiskLimits(){
+  try{
+    const d = await fetchAPI(`/api/risk-limits`);
+    const lim = d.limits || {};
+    const warnings = d.correlation_warnings || [];
+    const weights = d.current_weights || {};
+    
+    document.getElementById('rl-drawdown').textContent = (lim.max_drawdown_threshold * 100).toFixed(0) + '%';
+    
+    let maxSectorWt = 0;
+    for (let sub in weights) {
+      if (weights[sub] > maxSectorWt) maxSectorWt = weights[sub];
+    }
+    const singleEl = document.getElementById('rl-single-sector');
+    singleEl.textContent = (maxSectorWt * 100).toFixed(1) + '%';
+    singleEl.className = 'sv ' + (maxSectorWt > lim.max_single_sector_weight ? 'dn' : 'up');
+    
+    const combinedWeights = warnings.map(w => w.combined_weight);
+    const maxCorrWt = combinedWeights.length ? Math.max(...combinedWeights) : 0;
+    const corrEl = document.getElementById('rl-correlation');
+    corrEl.textContent = maxCorrWt ? (maxCorrWt * 100).toFixed(1) + '%' : '0.0%';
+    corrEl.className = 'sv ' + (maxCorrWt > lim.max_correlated_exposure ? 'dn' : 'up');
+    
+    const warnEl = document.getElementById('rl-correlation-warnings');
+    if (warnings.length) {
+      warnEl.innerHTML = warnings.map(w => `
+        <div style="padding: 8px; background: rgba(255, 71, 87, 0.08); border: 1px solid rgba(255, 71, 87, 0.2); border-radius: 4px; margin-bottom: 6px;">
+          <strong>Concentration Alert:</strong> ${w.group.slice(0,3).join(', ')}... cluster combined weight is ${(w.combined_weight * 100).toFixed(1)}% (Limit: ${(w.limit * 100).toFixed(0)}%). Excess: +${(w.excess * 100).toFixed(1)}%
+        </div>
+      `).join('');
+    } else {
+      warnEl.innerHTML = `<div style="color:var(--green)">✓ No correlation concentration breaches detected</div>`;
+    }
+    
+    const nSectors = Object.keys(weights).length;
+    const sectorsEl = document.getElementById('rl-min-sectors');
+    sectorsEl.textContent = nSectors;
+    sectorsEl.className = 'sv ' + (nSectors < lim.min_sectors_held ? 'dn' : 'up');
+    
+  } catch(e) { console.warn('Risk limits error', e); }
+}
+
+async function loadPaperTrades(){
+  try{
+    const d = await fetchAPI(`/api/paper-trades`);
+    const summary = d.summary || {};
+    const trades = d.trades || [];
+    
+    document.getElementById('pt-total').textContent = summary.total_trades || 0;
+    if (summary.date_range) {
+      document.getElementById('pt-date-range').textContent = `${summary.date_range[0]} to ${summary.date_range[1]}`;
+    }
+    document.getElementById('pt-status').textContent = summary.status || 'NO_TRADES';
+    
+    if (trades.length) {
+      const lastTrade = trades[trades.length - 1];
+      const ret = lastTrade.benchmark_return;
+      const benchEl = document.getElementById('pt-bench');
+      benchEl.textContent = ret != null ? pct(ret, 2, true) : '—';
+      benchEl.className = 'sv ' + (ret != null ? cc(ret) : '');
+    }
+    
+    const tbody = document.getElementById('pt-tbody');
+    if (!trades.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">No paper trade records recorded yet. Run pipeline daily to record.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = trades.reverse().map(t => {
+      const allocs = Object.entries(t.allocations).map(([sub, w]) => `
+        <span style="display:inline-block;margin:2px;padding:2px 6px;border-radius:3px;background:var(--bg3);border:1px solid var(--border);font-family:var(--mono);font-size:10px;">
+          ${sub}: <span style="color:var(--green)">${(w * 100).toFixed(1)}%</span>
+        </span>
+      `).join(' ');
+      
+      const ret = t.benchmark_return;
+      const retHtml = ret != null ? `<span style="${cs(ret)}">${pct(ret, 2, true)}</span>` : '<span style="color:var(--text3)">—</span>';
+      
+      return `<tr>
+        <td style="font-family:var(--mono);font-weight:700">${t.date}</td>
+        <td style="color:var(--text3);font-family:var(--mono);font-size:11px">${new Date(t.timestamp).toLocaleTimeString()}</td>
+        <td class="r" style="font-family:var(--mono)">${retHtml}</td>
+        <td>${allocs}</td>
+      </tr>`;
+    }).join('');
+    
+  } catch(e) {
+    document.getElementById('pt-tbody').innerHTML = '<tr><td colspan="4" class="empty">Failed to load paper trades</td></tr>';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────────────────────────────
-loadOverview();
-setInterval(loadTopbar,300000);
+window.onload = initAuth;
 </script>
 </body>
 </html>

@@ -1,0 +1,90 @@
+/* ── Hero Insight ────────────────────────────────────────────── */
+.ins-hero {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--gap-lg);
+  margin-bottom: var(--gap-lg);
+  transition: border-color 0.3s ease;
+}
+.ins-hero:hover {
+  border-color: var(--border-glow);
+}
+
+.ins-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ins-date {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--cyan);
+}
+
+.ins-hero-body {
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.ins-line {
+  margin-bottom: 8px;
+}
+.ins-line:last-child {
+  margin-bottom: 0;
+}
+
+/* ── History Grid ───────────────────────────────────────────── */
+.ins-history {
+  border-top: 1px solid var(--border);
+  padding-top: var(--gap-md);
+}
+.ins-history-title {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.ins-history-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ins-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  transition: all 0.25s ease;
+}
+.ins-card:hover {
+  border-color: rgba(139, 92, 246, 0.25);
+  background: var(--bg-3);
+}
+
+.ins-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.ins-card-body {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.ins-skeleton {
+  display: flex;
+  flex-direction: column;
+}

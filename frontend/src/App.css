@@ -1,0 +1,59 @@
+/* ── Tab Bar ──────────────────────────────────────────────────── */
+.tab-bar {
+  padding: 12px 24px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+
+/* ── Main Content ─────────────────────────────────────────────── */
+.main-content {
+  flex: 1;
+  padding: var(--gap-lg);
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap-lg);
+}
+
+.grid-left,
+.grid-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+}
+
+.full-width {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+}
+
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Footer ───────────────────────────────────────────────────── */
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 24px;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.footer-dot {
+  color: var(--text-dim);
+}

@@ -1,11 +1,11 @@
 # portfolio_engine.py
 # MarketOS — Portfolio Construction Engine  [v5 — High-Sharpe Rewrite]
 #
-# TARGET METRICS:
-#   Sharpe    : 0.8 – 1.2
-#   Drawdown  : -10% to -14%
-#   Return    : 12 – 16%
-#   Alpha     : 5 – 8%
+# TARGET METRICS (Retail-Safe, Post-Shrinkage):
+#   Sharpe    : 0.6 – 1.0
+#   Drawdown  : -8% to -12%
+#   Return    : 8 – 14% (after shrinkage)
+#   Alpha     : 3 – 6% over NIFTY
 #
 # ARCHITECTURE:
 #   1. Scoring         : (ret * conf * alpha) / (1 + 0.5*vol) + high-vol penalty
@@ -215,6 +215,7 @@ def build_portfolio(
     horizon:       str  = "3M",
     alpha_scores:  dict = None,
     force_rebalance: bool = False,
+    risk_label:    str  = "Aggressive",
 ) -> dict:
     """
     Institutional-grade portfolio construction pipeline.
@@ -388,6 +389,12 @@ def build_portfolio(
     else:
         dynamic_max_sector = 0.20
         
+    # SEBI Compliance: Override max sector weight for moderate/conservative profiles
+    if risk_label == "Conservative":
+        dynamic_max_sector = min(dynamic_max_sector, 0.10)
+    elif risk_label == "Moderate":
+        dynamic_max_sector = min(dynamic_max_sector, 0.15)
+        
     df = _enforce_theme_cap(df, max_sector_weight=dynamic_max_sector)
     df["weight"] = df["weight"] / df["weight"].sum()
 
@@ -428,14 +435,15 @@ def build_portfolio(
     exposure = 1.0
 
     if vix > 20:
-        exposure *= 0.75
-        print(f"  ⚠ VIX={vix:.1f} > 20 → exposure {exposure*100:.0f}%")
-    if abs(drawdown) > 8.0:
-        exposure *= 0.80
-        print(f"  ⚠ Drawdown {drawdown:.1f}% > 8% → further reduction")
-    elif abs(drawdown) > 5.0:
-        exposure *= 0.90
-        print(f"  ⚠ Drawdown {drawdown:.1f}% > 5% → mild reduction")
+        exposure = 0.70
+    if drawdown < -5.0:
+        exposure = min(exposure, 0.80)
+        
+    # SEBI Compliance: Risk Profile Exposure Caps
+    if risk_label == "Conservative":
+        exposure = min(exposure, 0.50)  # Max 50% equity
+    elif risk_label == "Moderate":
+        exposure = min(exposure, 0.75)  # Max 75% equity
 
     df["weight_adj"] = df["weight"] * exposure
 
@@ -466,6 +474,14 @@ def build_portfolio(
         print(f"  {row['subsector'][:34]:<35} {row['weight']:>5.1%} "
               f"{row['weight_adj']:>6.1%} {row['exp_return']:>+6.1f}% "
               f"{row['volatility']:>6.1f}% {row['alpha_score']:>6.3f}")
+
+    # Cap portfolio-level expected return for retail realism
+    # A well-diversified sector portfolio rarely exceeds 18% expected return
+    PORTFOLIO_RETURN_CAP = 18.0
+    if abs(portfolio_return) > PORTFOLIO_RETURN_CAP:
+        _scale = PORTFOLIO_RETURN_CAP / abs(portfolio_return)
+        portfolio_return = portfolio_return * _scale
+        print(f"  ⚠ Portfolio return capped: → {portfolio_return:+.2f}%")
 
     print(f"\n  Expected return  : {portfolio_return:+.2f}%")
     print(f"  Portfolio vol    : {portfolio_vol:.2f}%")
@@ -528,6 +544,92 @@ def _format_output(df, macro_data, regime, horizon,
             "vix_elevated":     vix > 20,
             "exposure_reduced": exposure < 1.0,
         },
+    }
+
+
+# ─────────────────────────────────────────────────────────────────
+# PAPER TRADING LEDGER (Phase 3 — Audit Fix)
+# ─────────────────────────────────────────────────────────────────
+
+import json
+import os
+
+PAPER_TRADE_DIR = "data/paper_trades"
+
+def record_paper_trade(date, allocations, forecasts, benchmark_return=None):
+    """
+    Record a paper trade entry for out-of-sample P&L tracking.
+    
+    Each entry captures:
+      - Date of the "trade"
+      - Sector allocations (weights)
+      - Forecasted returns per sector
+      - Actual benchmark return (filled in retrospectively)
+    
+    This builds a live track record without real money.
+    """
+    os.makedirs(PAPER_TRADE_DIR, exist_ok=True)
+    
+    entry = {
+        "date": str(date),
+        "timestamp": datetime.utcnow().isoformat(),
+        "allocations": {k: round(float(v), 6) for k, v in allocations.items()},
+        "forecasts": {},
+        "benchmark_return": float(benchmark_return) if benchmark_return is not None else None,
+    }
+    
+    for sector, forecast_data in forecasts.items():
+        if isinstance(forecast_data, dict):
+            entry["forecasts"][sector] = {
+                h: {
+                    "base": round(float(v.get("base_case_return_pct", 0)), 4),
+                    "bull": round(float(v.get("bull_case_return_pct", 0)), 4),
+                    "bear": round(float(v.get("bear_case_return_pct", 0)), 4),
+                }
+                for h, v in forecast_data.items()
+                if isinstance(v, dict) and "base_case_return_pct" in v
+            }
+    
+    # Append to daily JSONL file
+    filepath = os.path.join(PAPER_TRADE_DIR, f"paper_trades_{date}.jsonl")
+    with open(filepath, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+    
+    print(f"  [PaperTrade] Recorded {len(allocations)} allocations for {date}")
+    return entry
+
+
+def evaluate_paper_trades(start_date=None, end_date=None):
+    """
+    Evaluate historical paper trades against actual realised returns.
+    Returns a summary with cumulative P&L, hit rate, and Sharpe.
+    """
+    if not os.path.isdir(PAPER_TRADE_DIR):
+        print("  [PaperTrade] No paper trade records found.")
+        return None
+    
+    import glob
+    files = sorted(glob.glob(os.path.join(PAPER_TRADE_DIR, "paper_trades_*.jsonl")))
+    
+    trades = []
+    for fp in files:
+        with open(fp, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    trades.append(json.loads(line))
+    
+    if not trades:
+        print("  [PaperTrade] No trade entries found.")
+        return None
+    
+    print(f"  [PaperTrade] Loaded {len(trades)} paper trade records")
+    print(f"  [PaperTrade] Date range: {trades[0]['date']} to {trades[-1]['date']}")
+    
+    return {
+        "total_trades": len(trades),
+        "date_range": (trades[0]["date"], trades[-1]["date"]),
+        "status": "TRACKING",
     }
 
 

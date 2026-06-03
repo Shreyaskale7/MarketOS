@@ -24,6 +24,9 @@ for folder in [
 # In production (Railway), use /data volume mount if available
 # Locally falls back to data/marketos.db
 _db_path = os.getenv("DATABASE_URL")
+if _db_path and _db_path.startswith("postgres://"):
+    _db_path = _db_path.replace("postgres://", "postgresql://", 1)
+
 if not _db_path:
     # Check if running on Railway with persistent volume
     if os.path.exists("/data"):
@@ -31,10 +34,11 @@ if not _db_path:
     else:
         _db_path = "sqlite:///data/marketos.db"
 DATABASE_URL = _db_path
+connect_args = {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False}  # needed for SQLite
+    connect_args=connect_args
 )
 Base = declarative_base()
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
@@ -225,6 +229,44 @@ class BacktestCache(Base):
     n_periods                 = Column(Integer, default=0)
     status                    = Column(String(20), default="ok")
     consistency_warnings_json = Column(Text)
+
+
+# ─────────────────────────────────────────────────────────────────
+# MULTI-TENANCY & COMPLIANCE TABLES
+# ─────────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    uuid          = Column(String(36), unique=True, index=True)
+    email         = Column(String(120), unique=True, index=True)
+    password_hash = Column(String(255))
+    created_at    = Column(DateTime, default=datetime.utcnow)
+    is_active     = Column(Boolean, default=True)
+
+
+class UserRiskProfile(Base):
+    __tablename__ = "user_risk_profiles"
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    user_id          = Column(Integer, index=True)  # FK to users.id
+    age              = Column(Integer)
+    income_bracket   = Column(String(50))
+    investment_horizon = Column(String(50))  # e.g., <1Y, 1-3Y, 3-5Y, >5Y
+    drawdown_tolerance = Column(String(50))  # e.g., Low, Medium, High
+    risk_score       = Column(Integer)       # 1 to 100
+    risk_label       = Column(String(50))    # Conservative, Moderate, Aggressive
+    assessed_at      = Column(DateTime, default=datetime.utcnow)
+
+
+class UserPortfolio(Base):
+    __tablename__ = "user_portfolios"
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    user_id          = Column(Integer, index=True)
+    horizon          = Column(String(20))
+    risk_label       = Column(String(50))
+    portfolio_json   = Column(Text)          # Stores the allocated positions & weights
+    generated_at     = Column(DateTime, default=datetime.utcnow)
+    execution_status = Column(String(50))    # e.g., PENDING, EXECUTED, PAPER_TRADE
 
 
 # ─────────────────────────────────────────────────────────────────

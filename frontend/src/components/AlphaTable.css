@@ -1,0 +1,121 @@
+/* ── AlphaTable Component Styles ──────────────────────────────── */
+
+.alpha-table-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.alpha-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+}
+
+.alpha-table-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.alpha-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+}
+
+.alpha-stat-label {
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.6rem;
+}
+
+.alpha-stat-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+/* Alpha score bar inline */
+.alpha-score-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alpha-bar {
+  width: 60px;
+  height: 4px;
+  background: var(--bg-4);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.alpha-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Status pill */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.status-pill.pass {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-pill.excluded {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Table wrapper with scroll */
+.alpha-table-wrapper {
+  overflow-x: auto;
+}
+
+.alpha-table-wrapper .data-table td {
+  white-space: nowrap;
+}
+
+.alpha-table-wrapper .data-table td.subsector-cell {
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: normal;
+  min-width: 140px;
+}
+
+.alpha-rank {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  width: 24px;
+  text-align: center;
+}
+
+/* Skeleton */
+.alpha-skeleton-row {
+  height: 40px;
+  margin-bottom: 2px;
+}

@@ -236,14 +236,14 @@ def load_training_data(subsector=None, sector=None, lookback_years=10):
     available = [f for f in features if f in macro_df.columns]
 
     # ── Align and clean ───────────────────────────────────────────
-    combined = macro_df[available].join(target, how='inner').dropna()
+    combined = macro_df[available + ['nifty_return']].join(target, how='inner').dropna()
 
     if len(combined) < 100:
         print(f"  Insufficient samples: {len(combined)}")
         return None
 
     X = combined[available]
-    y = combined['target_return']
+    y = combined['target_return'] - combined['nifty_return']  # RELATIVE RETURN (ALPHA)
 
     # Remove outliers (> 4 std)
     z = np.abs((y - y.mean()) / (y.std() + 1e-8))
@@ -315,13 +315,16 @@ def select_best_model(X, y):
         cv_r2    = []
         cv_dir   = []
 
+        from scipy.stats import spearmanr
         for tr_idx, te_idx in tscv.split(X):
             Xtr = scaler.fit_transform(X.iloc[tr_idx])
             Xte = scaler.transform(X.iloc[te_idx])
             ytr, yte = y.iloc[tr_idx], y.iloc[te_idx]
             model.fit(Xtr, ytr)
             preds = model.predict(Xte)
-            cv_r2.append(r2_score(yte, preds))
+            corr, _ = spearmanr(yte, preds)
+            ic = float(corr) if not np.isnan(corr) else 0.0
+            cv_r2.append(ic)
             cv_dir.append((np.sign(preds) == np.sign(yte)).mean())
 
         avg_r2  = float(np.mean(cv_r2))
@@ -371,13 +374,16 @@ def train_sector_model(subsector=None, sector=None,
         tscv   = TimeSeriesSplit(n_splits=5)
         cv_r2  = []
         cv_dir = []
+        from scipy.stats import spearmanr
         for tr_idx, te_idx in tscv.split(X):
             Xtr = scaler.fit_transform(X.iloc[tr_idx])
             Xte = scaler.transform(X.iloc[te_idx])
             ytr, yte = y.iloc[tr_idx], y.iloc[te_idx]
             model.fit(Xtr, ytr)
             preds = model.predict(Xte)
-            cv_r2.append(r2_score(yte, preds))
+            corr, _ = spearmanr(yte, preds)
+            ic = float(corr) if not np.isnan(corr) else 0.0
+            cv_r2.append(ic)
             cv_dir.append((np.sign(preds) == np.sign(yte)).mean())
 
         avg_r2  = float(np.mean(cv_r2))
@@ -548,5 +554,5 @@ def retrain_rolling_window():
 if __name__ == "__main__":
     from database import init_database
     init_database()
-    # Train with auto model selection
-    train_all_models(lookback_years=10, model_type='auto')
+    # Train with auto model selection, max 4 years to prevent lookahead bias
+    train_all_models(lookback_years=4, model_type='auto')

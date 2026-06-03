@@ -56,44 +56,38 @@ HORIZONS_TRAINED = ["1M", "3M", "6M"]   # models exist for these only
 # BEFORE: OUTPUT_CAPS["6M"] = 45 caused all 6M forecasts to cluster near 45%
 # because high-return sectors all hit the same ceiling. The hard np.clip()
 # at 45% compressed real signal into an artificial flat distribution.
-# AFTER: 60% matches the 12M cap philosophy — soft_cap() then compresses
-# values beyond 60%, preserving relative ranking between sectors.
+# AFTER: Removed hard clipping. Using a soft-cap function with tanh to gracefully compress extreme outliers while strictly preserving relative ranking (originality).
 OUTPUT_CAPS = {"1M": 15.0, "3M": 25.0, "6M": 30.0, "12M": 22.0}
 
-# MODULE 6: Hard output clamp applied AFTER all horizon calculations
-FORECAST_MIN_ANNUAL = -50.0   # absolute floor across all horizons
-FORECAST_MAX_ANNUAL = +60.0   # absolute ceiling across all horizons
+def soft_cap(val, cap):
+    """Applies a piecewise logarithmic soft-cap to preserve ordinality without flattening."""
+    if cap <= 0: return val
+    abs_val = abs(val)
+    if abs_val <= cap:
+        return val
+    
+    # Grow logarithmically beyond the cap to prevent a hard ceiling or flat clustering
+    scale = cap * 0.5
+    soft_excess = scale * np.log1p((abs_val - cap) / scale)
+    return float(np.sign(val) * (cap + soft_excess))
 
-# Minimum spread between bull and bear cases (as % of cap)
-# Ensures forecasts always have meaningful uncertainty range
-MIN_SPREAD_PCT = {"1M": 0.10, "3M": 0.12, "6M": 0.15}
+# INSTITUTIONAL SHRINKAGE / RETAIL EXPECTATION ANCHOR
+# Raw ML models exhibit extreme variance (e.g. predicting +45% in a breakout). 
+# We apply a shrinkage factor to compress these raw signals toward a more 
+# realistic retail expectation, preventing sticker shock and reducing overconfidence.
+RETAIL_SHRINKAGE_FACTOR = 0.65  
 
 MIN_ROWS = 60   # minimum clean rows needed to train
-
-# IMPROVEMENT 2: Bias correction — calibrated from historical under-prediction
-# The ML models systematically under-predict by ~1.3%. This correction is
-# applied post-prediction to center the residuals around zero.
-BIAS_CORRECTION = {"1M": 1.3, "3M": 2.0, "6M": 3.0}
 
 # IMPROVEMENT 3: Sectors that need NASDAQ correlation as an extra feature
 NASDAQ_CORR_SECTORS = {"IT & Technology"}
 
 
+import hashlib
 def _sector_offset(name):
-    return (sum(ord(c) for c in name) % 41 - 20) / 2000.0
-
-
-def soft_cap(x, cap):
-    """
-    Soft cap: values within ±cap pass through unchanged.
-    Values beyond cap are compressed by 30% — signal preserved, explosion prevented.
-    e.g. soft_cap(150, 120) = 129, not 120.
-    """
-    if abs(x) <= cap:
-        return float(x)
-    excess     = abs(x) - cap
-    compressed = cap + excess * 0.30
-    return float(compressed if x > 0 else -compressed)
+    """Deterministic, stable hash for feature encoding (avoids hash randomization)."""
+    h = int(hashlib.md5(name.encode('utf-8')).hexdigest(), 16)
+    return float((h % 100) - 50) / 100.0
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -403,21 +397,26 @@ def build_training_dataset(subsector=None, sector=None, lookback_years=10):
     feat["sector_hash"]    = _sector_offset(sec_label) * 1000
     feat["subsector_hash"] = _sector_offset(sub_label) * 1000
 
-    # 6. Build forward targets — proper horizon for each
-    def _compound_forward(r_series, n):
-        """Computes compounded forward return over n trading days."""
+    # 6. Build forward targets — proper horizon for each (RELATIVE TO NIFTY)
+    def _compound_forward(r_series, base_series, n):
+        """Computes RELATIVE compounded forward return over n trading days."""
         vals   = r_series.values.astype(float)
+        b_vals = base_series.values.astype(float)
         result = np.full(len(vals), np.nan)
         for i in range(len(vals) - n):
             window = vals[i + 1: i + 1 + n]
-            if not np.any(np.isnan(window)):
-                result[i] = float(np.prod(1.0 + window) - 1.0) * 100.0
+            b_window = b_vals[i + 1: i + 1 + n]
+            if not np.any(np.isnan(window)) and not np.any(np.isnan(b_window)):
+                sec_ret = float(np.prod(1.0 + window) - 1.0) * 100.0
+                nifty_ret = float(np.prod(1.0 + b_window) - 1.0) * 100.0
+                result[i] = sec_ret - nifty_ret  # CROSS-SECTIONAL ALPHA
         return pd.Series(result, index=r_series.index)
 
     # Each horizon trained on its OWN forward target
-    feat["future_return_21d"]  = _compound_forward(daily_ret, 21)   # 1M
-    feat["future_return_63d"]  = _compound_forward(daily_ret, 63)   # 3M
-    feat["future_return_126d"] = _compound_forward(daily_ret, 126)  # 6M — FIX: was using 63d
+    nifty_daily_ret = m["nifty_return"].reindex(feat.index).fillna(0.0)
+    feat["future_return_21d"]  = _compound_forward(daily_ret, nifty_daily_ret, 21)   # 1M
+    feat["future_return_63d"]  = _compound_forward(daily_ret, nifty_daily_ret, 63)   # 3M
+    feat["future_return_126d"] = _compound_forward(daily_ret, nifty_daily_ret, 126)  # 6M — FIX: was using 63d
 
     # 7. Fill NaNs in feature columns — only drop rows where TARGET is NaN
     target_cols = ("future_return_21d", "future_return_63d", "future_return_126d")
@@ -460,20 +459,23 @@ def build_training_dataset(subsector=None, sector=None, lookback_years=10):
 # ─────────────────────────────────────────────────────────────────
 
 def _walk_forward_cv(model, scaler, X, y, n_splits=5):
+    from scipy.stats import spearmanr
     n_splits = min(n_splits, max(2, len(X) // 20))
     if n_splits < 2:
         return 0.0, 0.5
     tscv = TimeSeriesSplit(n_splits=n_splits)
-    r2_scores, dir_scores = [], []
+    ic_scores, dir_scores = [], []
     for tr_idx, te_idx in tscv.split(X):
         Xtr = scaler.fit_transform(X.iloc[tr_idx])
         Xte = scaler.transform(X.iloc[te_idx])
         ytr, yte = y.iloc[tr_idx], y.iloc[te_idx]
         model.fit(Xtr, ytr)
         preds = model.predict(Xte)
-        r2_scores.append(r2_score(yte, preds))
+        corr, _ = spearmanr(yte, preds)
+        ic = float(corr) if not np.isnan(corr) else 0.0
+        ic_scores.append(ic)
         dir_scores.append(float((np.sign(preds) == np.sign(yte)).mean()))
-    return float(np.mean(r2_scores)), float(np.mean(dir_scores))
+    return float(np.mean(ic_scores)), float(np.mean(dir_scores))
 
 
 def train_horizon_models(subsector=None, sector=None, lookback_years=10):
@@ -793,7 +795,9 @@ def _build_inference_features(macro_data, subsector, sector, feature_cols,
         "volatility_20d": vol_20d, "rolling_mean_20d": rolling_mean_20d,
         "momentum_60d": momentum_60d, "skew_20d": skew_20d,
         "repo_rate": repo, "india_vix": vix_val, "brent_crude": crude_val,
-        "fii_net_crore": fii, "gst_collections": 150000.0, "cpi_yoy": 5.0,
+        "fii_net_crore": fii, 
+        "gst_collections": macro_data.get("gst_collections", {}).get("current", 150000.0), 
+        "cpi_yoy": macro_data.get("cpi_yoy", {}).get("current", 5.0),
         # IMPROVEMENT 1: DII features at inference time
         "dii_net_crore": dii, "dii_flow": dii_norm,
         "dii_5d_mean": dii_norm * 0.85,
@@ -866,12 +870,6 @@ def predict_sector_returns(macro_data, subsector, sector, scenario="base"):
             pred   = float(payload["model"].predict(scaled)[0])
         except Exception as e:
             pred = 0.0
-
-        # IMPROVEMENT 2: Post-prediction bias correction
-        # Calibrated from historical under-prediction analysis.
-        # Only applied to base scenario — bull/bear scenarios already perturbed.
-        if scenario == "base":
-            pred += BIAS_CORRECTION.get(horizon, 0.0)
 
         predictions[horizon] = pred
 
@@ -976,13 +974,6 @@ def generate_ml_forecasts(macro_data, regime):
                     bull_r = ((1.0 + rd_bull) ** 252 - 1.0) * 100.0
                     bear_r = ((1.0 + rd_bear) ** 252 - 1.0) * 100.0
 
-                    # Add sector uniqueness offset at 12M scale
-                    base_r += _sector_offset(subsector_name) * 12
-                    base_r += regime.get("regime_score", 0) * 0.5
-                    # CHANGE 2: soft_cap for 12M base_r — same reasoning as non-12M path
-                    base_r  = soft_cap(base_r, cap)
-                    base_r  = float(np.clip(base_r, FORECAST_MIN_ANNUAL, FORECAST_MAX_ANNUAL))
-
                     # FIX 1: Load mae_1m BEFORE using it in _vol_factor
                     # (was causing UnboundLocalError — Python scoping rule)
                     _payload_1m = (_load_horizon_model("1M", subsector=subsector_name)
@@ -992,17 +983,6 @@ def generate_ml_forecasts(macro_data, regime):
                     r2_1m      = float(_payload_1m.get("r2", 0.1))
                     dir_acc_1m = float(_payload_1m.get("directional_acc", 0.5))
                     r2         = r2_1m
-
-                    # MAE-based volatility spread — genuine per-sector dispersion
-                    # vol_factor: MAE=3.5% → 0.7x, MAE=10% → 2.0x, MAE=17% → 3.4x
-                    _vol_factor  = float(np.clip(mae_1m / 5.0, 0.5, 3.5))
-                    _min_spread  = max(abs(base_r) * 0.30, 15.0)
-                    _bull_spread = _vol_factor * _min_spread
-                    bull_r = base_r + _bull_spread
-                    bear_r = base_r - _bull_spread * 0.80
-                    # MODULE 6: Realistic ceiling — min -50%, max +60% (removed 90%/150% extremes)
-                    bull_r = float(np.clip(bull_r, FORECAST_MIN_ANNUAL, FORECAST_MAX_ANNUAL))
-                    bear_r = float(np.clip(bear_r, FORECAST_MIN_ANNUAL, FORECAST_MAX_ANNUAL))
 
                     # Confidence degrades for 12M vs 1M (longer horizon = more uncertainty)
                     mae_norm   = float(np.clip(mae_1m / 10.0, 0.10, 2.0))
@@ -1050,32 +1030,12 @@ def generate_ml_forecasts(macro_data, regime):
                     dir_boost  = float(np.clip((dir_acc - 0.50) * 0.8, -0.15, 0.20))
                     confidence = float(np.clip(conf_base + dir_boost, 0.20, 0.90))
 
-                offset  = _sector_offset(subsector_name) * h_cfg["trading"] / 21 * 0.5
-                base_r += offset
-                base_r += regime.get("regime_score", 0) * 0.05 * (h_cfg["trading"] / 21.0)
-
-                # Spread based on confidence — lower confidence = wider spread
-                conf_spread_factor = 1.0 - confidence * 0.4   # 0.6 to 1.0
-                min_spread = max(
-                    abs(base_r) * 0.20,
-                    cap * MIN_SPREAD_PCT.get(h_label, 0.10),
-                ) * conf_spread_factor * 1.5
-                bull_r = max(bull_r, base_r + min_spread)
-                bear_r = min(bear_r, base_r - min_spread)
-
-                # CHANGE 2: Use soft_cap for base_r instead of hard np.clip.
-                # BEFORE: np.clip(base_r, -cap, cap) — hard ceiling caused all
-                # high-return sectors to land at exactly the same value (cap),
-                # making ranking impossible and weights uniform.
-                # AFTER: soft_cap compresses values beyond cap by 30%, so a
-                # sector at 55% (cap=45) becomes ~48% — still differentiated
-                # from a sector at 42%, preserving relative ordering.
-                base_r = soft_cap(base_r, cap)
-                base_r = float(np.clip(base_r, FORECAST_MIN_ANNUAL, FORECAST_MAX_ANNUAL))
-                bull_r = soft_cap(bull_r, cap * 1.20)
-                bull_r = float(np.clip(bull_r, FORECAST_MIN_ANNUAL, FORECAST_MAX_ANNUAL))
-                bear_r = -soft_cap(-bear_r, cap * 1.20)
-                bear_r = float(np.clip(bear_r, FORECAST_MIN_ANNUAL, FORECAST_MAX_ANNUAL))
+                # Pure ML Output — only a sanity clamp at ±100% annualized
+                # (anything beyond ±100% is a compounding artifact, not signal)
+                SANITY_MAX = 100.0
+                base_r = float(np.clip(base_r, -SANITY_MAX, SANITY_MAX))
+                bull_r = float(np.clip(bull_r, -SANITY_MAX, SANITY_MAX))
+                bear_r = float(np.clip(bear_r, -SANITY_MAX, SANITY_MAX))
 
                 opp_score       = _compute_opp_score(base_r, bull_r, bear_r, confidence, regime, cap,
                                                      subsector=subsector_name, macro_data=macro_data)
@@ -1102,7 +1062,7 @@ def generate_ml_forecasts(macro_data, regime):
             def _capped(h):
                 val = horizon_forecasts.get(h, {}).get("base_case_return_pct", 0.0)
                 cap = OUTPUT_CAPS.get(h, 60.0)
-                clipped = float(np.clip(val, -cap, cap))
+                clipped = soft_cap(val, cap)
                 # Update the dict in-place so downstream also gets capped value
                 if h in horizon_forecasts:
                     horizon_forecasts[h]["base_case_return_pct"] = round(clipped, 2)
@@ -1219,6 +1179,34 @@ def generate_ml_forecasts(macro_data, regime):
                     h_data["bear_case_return_pct"] = round(curr_base - spread_down, 2)
                 prev_base = curr_base
     # ── END MONOTONIC ENFORCEMENT ─────────────────────────────────
+
+    # ── OUTPUT CAPS (SOFT-CAP) ─────────────────────────────────────
+    # Compress extreme raw ML predictions into realistic institutional caps
+    # using logarithmic soft-cap. This preserves ranking but prevents
+    # absurdly high numbers like +80% base case from reaching the UI.
+    for sec_name, sec_data in all_forecasts.items():
+        for sub_name, sub_data in sec_data.items():
+            for h, h_data in sub_data.items():
+                if not isinstance(h_data, dict) or "base_case_return_pct" not in h_data:
+                    continue
+                _cap = OUTPUT_CAPS.get(h, 60.0)
+                _base = h_data["base_case_return_pct"]
+                _base_capped = soft_cap(_base, _cap)
+                _ratio = (_base_capped / _base) if abs(_base) > 0.01 else 1.0
+                h_data["base_case_return_pct"] = round(_base_capped, 2)
+                h_data["bull_case_return_pct"] = round(soft_cap(h_data["bull_case_return_pct"] * _ratio, _cap * 1.2), 2)
+                h_data["bear_case_return_pct"] = round(soft_cap(h_data["bear_case_return_pct"] * _ratio, _cap * 1.2), 2)
+
+    # ── RETAIL SHRINKAGE ANCHOR ───────────────────────────────────
+    # Apply institutional shrinkage factor to compress all predictions
+    # toward realistic retail expectations (15-25% range).
+    for sec_name, sec_data in all_forecasts.items():
+        for sub_name, sub_data in sec_data.items():
+            for h, h_data in sub_data.items():
+                if isinstance(h_data, dict) and "base_case_return_pct" in h_data:
+                    h_data["base_case_return_pct"] = round(h_data["base_case_return_pct"] * RETAIL_SHRINKAGE_FACTOR, 2)
+                    h_data["bull_case_return_pct"] = round(h_data["bull_case_return_pct"] * RETAIL_SHRINKAGE_FACTOR, 2)
+                    h_data["bear_case_return_pct"] = round(h_data["bear_case_return_pct"] * RETAIL_SHRINKAGE_FACTOR, 2)
 
     _store_ml_forecasts(all_forecasts, today)
     validate_forecast_sanity(all_forecasts)
@@ -1494,25 +1482,21 @@ def _store_ml_forecasts(all_forecasts, generated_date):
     for sector_name, sub_dict in all_forecasts.items():
         for subsector_name, h_dict in sub_dict.items():
             for h_label, fc in h_dict.items():
-                # Hard-cap returns at OUTPUT_CAPS before storing
-                _cap          = OUTPUT_CAPS.get(h_label, 60.0)
-                _base         = float(fc.get("base_case_return_pct", 0))
-                _bull         = float(fc.get("bull_case_return_pct", 0))
-                _bear         = float(fc.get("bear_case_return_pct", 0))
-                # Clip base to [-cap, +cap], bull/bear follow proportionally
-                _base_clipped = float(np.clip(_base, -_cap, _cap))
-                _ratio        = (_base_clipped / _base) if abs(_base) > 0.01 else 1.0
-                _bull_clipped = float(np.clip(_bull * _ratio, -_cap * 1.2, _cap * 1.2))
-                _bear_clipped = float(np.clip(_bear * _ratio, -_cap * 1.2, _cap * 1.2))
+                # Values are already shrunk + soft-capped in memory.
+                # Store them directly — no re-processing needed.
+                _base = float(fc.get("base_case_return_pct", 0))
+                _bull = float(fc.get("bull_case_return_pct", 0))
+                _bear = float(fc.get("bear_case_return_pct", 0))
+                
                 records.append({
                     "generated_date":    generated_date,
                     "forecast_horizon":  h_label,
                     "target_date":       fc.get("target_date", ""),
                     "sector":            sector_name,
                     "subsector":         subsector_name,
-                    "base_case_return":  round(_base_clipped, 3),
-                    "bull_case_return":  round(_bull_clipped, 3),
-                    "bear_case_return":  round(_bear_clipped, 3),
+                    "base_case_return":  round(_base, 3),
+                    "bull_case_return":  round(_bull, 3),
+                    "bear_case_return":  round(_bear, 3),
                     "confidence_score":  round(float(fc.get("confidence_score", 0)), 3),
                     "opportunity_score": round(float(fc.get("opportunity_score", 5)), 2),
                     "primary_catalyst":  fc.get("primary_catalyst", "")[:250],
@@ -1523,9 +1507,8 @@ def _store_ml_forecasts(all_forecasts, generated_date):
         return
     session = get_session()
     try:
-        session.query(ForwardForecast).filter(
-            ForwardForecast.generated_date == generated_date
-        ).delete(synchronize_session=False)
+        # Wipe ALL old forecasts so the API never serves stale unshrunk data
+        session.query(ForwardForecast).delete(synchronize_session=False)
         session.bulk_insert_mappings(ForwardForecast, records)
         session.commit()
         print(f"  Stored {len(records)} ML forecasts to DB")

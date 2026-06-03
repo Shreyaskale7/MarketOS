@@ -1,0 +1,73 @@
+/* ── TopBar Component Styles ──────────────────────────────────── */
+
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.top-bar-center {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex: 1;
+  justify-content: center;
+}
+
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  min-width: 180px;
+  justify-content: flex-end;
+}
+
+.top-bar-metric-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-bar-metric .change {
+  font-size: 0.65rem;
+}
+
+.top-bar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+}
+
+.top-bar-right .regime-badge {
+  font-size: 0.6rem;
+  padding: 3px 10px;
+}
+
+.top-bar-right .pipeline-date {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.top-bar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Skeleton overrides for TopBar */
+.top-bar .skeleton-metric {
+  width: 60px;
+  height: 16px;
+}
+
+@media (max-width: 900px) {
+  .top-bar-center {
+    gap: 14px;
+  }
+  .top-bar-metric .value {
+    font-size: 0.75rem;
+  }
+}

@@ -765,6 +765,18 @@ def run_daily_pipeline(date=None, print_report=True):
         except Exception as e:
             print(f"  Risk engine skipped: {e}")
 
+        # ── Paper Trading Ledger ──────────────────────────────────
+        try:
+            print("\n[+] Recording paper trades...")
+            from portfolio_engine import record_paper_trade
+            nifty_ret = contrib.get("nifty_actual_return_pct", 0.0)
+            if isinstance(portfolio_output, dict) and "3M" in portfolio_output:
+                p_3m = portfolio_output["3M"]
+                allocs = {sub: w_data.get("adjusted_weight", 0.0) for sub, w_data in p_3m.get("weights", {}).items()}
+                record_paper_trade(run_date, allocs, all_forecasts, benchmark_return=nifty_ret)
+        except Exception as e:
+            print(f"  Paper trade recording skipped: {e}")
+
     # ── Performance analytics (always runs if DB has data) ────────
     try:
         print("\n[+] Computing performance analytics...")

@@ -27,10 +27,11 @@ warnings.filterwarnings("ignore")
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────
 WEIGHTS = {
-    "momentum":       0.40,
-    "mean_reversion": 0.20,
-    "vol_breakout":   0.20,
+    "momentum":       0.30,
+    "mean_reversion": 0.15,
+    "vol_breakout":   0.15,
     "macro_align":    0.20,
+    "sentiment":      0.20,
 }
 LOOKBACK_LONG  = 90
 MOMENTUM_SHORT = 20
@@ -145,6 +146,24 @@ def _signal_volatility_breakout(price_df: pd.DataFrame) -> pd.Series:
     return pd.Series(scores)
 
 
+def _signal_sentiment(moderated_output: dict) -> pd.Series:
+    """Fetches live LLM sentiment per sector and maps to subsectors."""
+    try:
+        from sentiment_engine import get_live_sentiment_all_sectors
+        sentiment_data = get_live_sentiment_all_sectors(force_refresh=False)
+    except Exception:
+        sentiment_data = {}
+
+    sub_scores = {}
+    for sector_name, sec_data in MARKET_CLASSIFICATION.items():
+        # Score is -1.0 to 1.0, scale it to 0.0 to 100.0 (where 0.0 is neutral 50)
+        raw_score = sentiment_data.get(sector_name, {}).get("sentiment_score", 0.0)
+        scaled_score = (raw_score + 1.0) / 2.0 * 100.0
+        
+        for sub_name in sec_data["subsectors"]:
+            sub_scores[sub_name] = scaled_score
+    return pd.Series(sub_scores)
+
 def _signal_macro_alignment(moderated_output: dict) -> pd.Series:
     """
     SECTION 7 FIX: macro ∈ [0.4, 1.0] with REAL VARIATION per sector.
@@ -234,6 +253,7 @@ def compute_alpha_scores(
     rev_raw = _signal_mean_reversion(price_df)
     vol_raw = _signal_volatility_breakout(price_df)
     mac_raw = _signal_macro_alignment(moderated_output)
+    sen_raw = _signal_sentiment(moderated_output)
 
     # MARKET STATE: on closed days, zero price-driven signals so alpha
     # is driven only by the price-independent macro alignment component.
@@ -243,11 +263,12 @@ def compute_alpha_scores(
         vol_raw = pd.Series(0.0, index=vol_raw.index)
         print("  ℹ Momentum / mean-reversion / vol signals zeroed (non-trading day)")
 
-    all_subs = set(mom_raw.index) | set(rev_raw.index) | set(vol_raw.index) | set(mac_raw.index)
+    all_subs = set(mom_raw.index) | set(rev_raw.index) | set(vol_raw.index) | set(mac_raw.index) | set(sen_raw.index)
     mom_raw  = mom_raw.reindex(all_subs).fillna(0.0)
     rev_raw  = rev_raw.reindex(all_subs).fillna(0.0)
     vol_raw  = vol_raw.reindex(all_subs).fillna(0.0)
     mac_raw  = mac_raw.reindex(all_subs).fillna(65.0)
+    sen_raw  = sen_raw.reindex(all_subs).fillna(50.0)
 
     mom_norm = _normalise(mom_raw)
     rev_norm = _normalise(rev_raw)

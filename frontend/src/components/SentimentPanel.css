@@ -1,0 +1,40 @@
+/* ── SentimentPanel Component Styles ──────────────────────────── */
+
+.sentiment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.sentiment-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.sentiment-card .sentiment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sentiment-sector-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sentiment-score.positive { color: var(--green); }
+.sentiment-score.negative { color: var(--red); }
+.sentiment-score.flat { color: var(--text-secondary); }
+
+/* Skeleton */
+.sentiment-skeleton-card {
+  height: 72px;
+  margin-bottom: var(--gap-sm);
+}
