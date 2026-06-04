@@ -450,7 +450,8 @@ def pipeline_status():
 def sentiment_data():
     try:
         from sentiment_engine import get_live_sentiment_all_sectors
-        sentiment = get_live_sentiment_all_sectors(force_refresh=False)
+        # force_refresh=True on first call so we never serve stale empty cache
+        sentiment = get_live_sentiment_all_sectors(force_refresh=True)
         return success({"sentiment": sentiment})
     except Exception as exc:
         return error(f"Sentiment engine error: {str(exc)}")
@@ -564,10 +565,33 @@ def portfolio():
     try:
         horizon = request.args.get("horizon", "3M")
         
-        # Simple cache to make UI horizon switching instant (DISABLED for live updates)
+        from database import get_session, UserRiskProfile, UserPortfolio
+        session_risk = get_session()
+        risk_profile = session_risk.query(UserRiskProfile).filter_by(user_id=request.user_id).first()
+        risk_label = risk_profile.risk_label if risk_profile else "Aggressive"
+        session_risk.close()
+        
+        # Caching for instant horizon switching
         from pipeline_utils import get_pipeline_date
         pd_date_str = str(get_pipeline_date())
-        cache_key = f"{pd_date_str}_{horizon}"
+        cache_key = f"{pd_date_str}_{horizon}_{risk_label}"
+        
+        if cache_key in _PORTFOLIO_CACHE:
+            portfolio_out = _PORTFOLIO_CACHE[cache_key]
+            session_save = get_session()
+            import json
+            new_portfolio = UserPortfolio(
+                user_id=request.user_id,
+                horizon=horizon,
+                risk_label=risk_label,
+                portfolio_json=json.dumps(portfolio_out.get("positions", [])),
+                execution_status="PENDING"
+            )
+            session_save.add(new_portfolio)
+            session_save.commit()
+            session_save.close()
+            return success({"portfolio": portfolio_out, "horizon": horizon})
+            
         from macro_engine import fetch_live_macro_data, classify_macro_regime
         from ml_forecast_engine import generate_ml_forecasts
         from portfolio_engine import build_portfolio
@@ -608,12 +632,6 @@ def portfolio():
         moderated_output = {"macro_data": macro, "macro_regime": regime, "moderated_sectors": moderated_sectors}
         from alpha_engine import compute_alpha_scores
         alpha = compute_alpha_scores(moderated_output, macro, regime, force_run=True)
-
-        # Fetch user's risk profile
-        from database import get_session, UserRiskProfile, UserPortfolio
-        session = get_session()
-        risk_profile = session.query(UserRiskProfile).filter_by(user_id=request.user_id).first()
-        risk_label = risk_profile.risk_label if risk_profile else "Aggressive"
 
         port    = build_portfolio(fc, macro, regime, horizon=horizon, alpha_scores=alpha, force_rebalance=True, risk_label=risk_label)
         risk_p  = apply_risk_rules(port, macro, regime)
@@ -662,6 +680,7 @@ def portfolio():
 
         # Save to UserPortfolio
         import json
+        session_save = get_session()
         new_portfolio = UserPortfolio(
             user_id=request.user_id,
             horizon=horizon,
@@ -669,9 +688,11 @@ def portfolio():
             portfolio_json=json.dumps(positions),
             execution_status="PENDING"
         )
-        session.add(new_portfolio)
-        session.commit()
-        session.close()
+        session_save.add(new_portfolio)
+        session_save.commit()
+        session_save.close()
+        
+        _PORTFOLIO_CACHE[cache_key] = portfolio_out
 
         return success({"portfolio": portfolio_out, "horizon": horizon})
     except Exception as exc:

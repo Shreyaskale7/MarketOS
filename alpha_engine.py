@@ -40,8 +40,8 @@ MEAN_REV_WIN   = 50
 VOL_SHORT_WIN  = 10
 VOL_LONG_WIN   = 60
 
-# SECTION 9: Lowered back from 0.60 to 0.52 because 0.60 was excluding 85% of the market.
-ALPHA_EXCLUSION_THRESHOLD = 0.52
+# SECTION 10: Lowered threshold to 0.40 to aggressively increase Alpha Signals
+ALPHA_EXCLUSION_THRESHOLD = 0.40
 
 # SECTION 9: macro floor raised from 0.30 → 0.40
 MACRO_ALIGNMENT_SCALE = {
@@ -276,12 +276,14 @@ def compute_alpha_scores(
     # FIX: Do not normalize macro scores because normalization maps flat arrays (e.g., all 65.0) 
     # to 0.5, destroying the macro alignment value. Just divide by 100.
     mac_norm = mac_raw / 100.0
+    sen_norm = sen_raw / 100.0
 
     alpha = (
         WEIGHTS["momentum"]       * mom_norm +
         WEIGHTS["mean_reversion"] * rev_norm +
         WEIGHTS["vol_breakout"]   * vol_norm +
-        WEIGHTS["macro_align"]    * mac_norm
+        WEIGHTS["macro_align"]    * mac_norm +
+        WEIGHTS["sentiment"]      * sen_norm
     )
 
     alpha_sorted = alpha.sort_values(ascending=False)
@@ -290,9 +292,9 @@ def compute_alpha_scores(
     # ── REGIME-AWARE THRESHOLD ────────────────────────────────────
     _regime_label = regime.get("overall_regime", "NEUTRAL") if isinstance(regime, dict) else "NEUTRAL"
     if _regime_label in ("BEARISH", "RISK_OFF", "STRONG_BEAR"):
-        _active_threshold = 0.52
+        _active_threshold = 0.45
     elif _regime_label in ("MILD_BEARISH",):
-        _active_threshold = 0.55
+        _active_threshold = 0.48
     else:
         _active_threshold = ALPHA_EXCLUSION_THRESHOLD
     # ── END REGIME-AWARE THRESHOLD ────────────────────────────────
@@ -310,6 +312,7 @@ def compute_alpha_scores(
             "mean_reversion":   round(float(rev_norm.get(sub, 0.5)), 4),
             "vol_breakout":     round(float(vol_norm.get(sub, 0.5)), 4),
             "macro_alignment":  round(float(mac_norm.get(sub, 0.5)), 4),
+            "sentiment":        round(float(sen_norm.get(sub, 0.5)), 4),
             "raw_momentum_pct": round(float(mom_raw.get(sub, 0.0)), 2),
             "signal_rank":      rank_map.get(sub, len(all_subs)),
             "excluded":         excluded,

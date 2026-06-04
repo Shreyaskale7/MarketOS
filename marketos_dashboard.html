@@ -370,7 +370,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <!-- ALPHA -->
     <div id="sec-alpha" class="sec">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Alpha Signal Engine v3</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Alpha Signal Engine <span style="color:var(--green)">v4</span> <span style="font-size:9px;background:rgba(0,212,170,.12);color:var(--green);border:1px solid rgba(0,212,170,.3);border-radius:3px;padding:2px 7px;font-weight:700;letter-spacing:.06em">THRESHOLD 0.40</span></div>
         <div style="font-size:11px;color:var(--text3)" id="alpha-sum">—</div>
       </div>
       <div class="card">
@@ -391,7 +391,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 
     <!-- SENTIMENT -->
     <div id="sec-sentiment" class="sec">
-      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:14px">LLM Sentiment Intelligence</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">LLM Sentiment Intelligence <span style="font-size:9px;background:rgba(155,89,255,.12);color:#9B59FF;border:1px solid rgba(155,89,255,.3);border-radius:3px;padding:2px 7px;font-weight:700;letter-spacing:.06em">GROQ LLaMA-3.3-70B</span></div>
+        <button class="run-btn" onclick="loadSentiment()" style="font-size:10px;padding:4px 12px">↻ REFRESH</button>
+      </div>
       <div id="sentiment-grid" class="g3">
         <div class="empty">Loading sentiment...</div>
       </div>
@@ -415,7 +418,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <!-- PORTFOLIO -->
     <div id="sec-portfolio" class="sec">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Portfolio Construction</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">Portfolio Construction <span style="font-size:9px;background:rgba(0,153,255,.12);color:var(--blue);border:1px solid rgba(0,153,255,.3);border-radius:3px;padding:2px 7px;font-weight:700;letter-spacing:.06em">MARKOWITZ MVO</span></div>
         <div class="tabs" style="margin-bottom:0">
           <button class="tab on" onclick="setPortTab('1M',this)">1M</button>
           <button class="tab" onclick="setPortTab('3M',this)">3M</button>
@@ -1063,7 +1066,7 @@ async function loadAlpha(){
       <div class="ar" style="${sc.excluded?'opacity:.45':''}">
         <span style="font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center">${sc.signal_rank}</span>
         <div><div style="font-size:12px;font-weight:500">${sub}</div></div>
-        <span class="mono" style="${cs(sc.alpha_score-.5)}">${f(sc.alpha_score,3)}</span>
+        <span class="mono" style="${cs(sc.alpha_score-.4)}">${f(sc.alpha_score,3)}</span>
         <span class="mono">${f(sc.momentum,3)}</span>
         <span class="mono">${f(sc.mean_reversion,3)}</span>
         <span class="mono">${f(sc.vol_breakout,3)}</span>
@@ -1087,13 +1090,25 @@ async function loadSentiment(){
     grid.innerHTML=Object.entries(data).map(([sec,v])=>{
       const score=v.sentiment_score||0;
       const label=v.bullish_bearish_label||'NEUTRAL';
-      const cLabel=label==='BULLISH'?'g':label==='BEARISH'?'r':'y';
+      const cLabel=label.includes('BULL')?'g':label.includes('BEAR')?'r':'y';
+      const scoreColor=score>0.2?'var(--green)':score<-0.2?'var(--red)':'var(--yellow)';
+      const barPct=Math.abs(score)*100;
+      const barSide=score>=0?'left':'right';
       return `<div class="card" style="margin-bottom:0;display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-weight:600;font-size:12px">${sec}</div>
-          <div class="badge ${cLabel}">${label} ${f(score,1)}</div>
+          <div class="badge ${cLabel}">${label}</div>
         </div>
-        <div style="font-size:11px;color:var(--text2);line-height:1.6;flex:1">${v.rationale||'No rationale'}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${scoreColor}">${score>=0?'+':''}${score.toFixed(2)}</div>
+          <div style="flex:1">
+            <div style="position:relative;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden">
+              <div style="position:absolute;top:0;${barSide}:50%;width:${barPct/2}%;height:100%;background:${scoreColor};border-radius:3px"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--mono)"><span>-1.0 BEARISH</span><span>0</span><span>BULLISH +1.0</span></div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);line-height:1.6;flex:1;padding-top:6px;border-top:1px solid var(--border)">${v.rationale||'No rationale'}</div>
       </div>`;
     }).join('');
   }catch(e){document.getElementById('sentiment-grid').innerHTML='<div class="empty">Failed to load sentiment</div>';}
@@ -1169,9 +1184,10 @@ async function loadPortfolio(){
       {l:'Sharpe (est.)', v:f(p.sharpe_like,3),s:''},
       {l:'Total Exposure', v:pct((p.total_exposure_pct||1)*100,1),s:''},
       {l:'Cash Buffer',    v:pct(p.cash_pct||0,1),s:'color:var(--text2)'},
-      {l:'NIFTY Hedge',    v:pct(p.nifty_hedge_pct||0,1),s:p.nifty_hedge_pct>0?'color:var(--neg)':''},
+      {l:'NIFTY Hedge',    v:pct(p.nifty_hedge_pct||0,1),s:p.nifty_hedge_pct>0?'color:var(--red)':''},
       {l:'Regime',         v:p.regime_label||'—',s:''},
       {l:'Severity',       v:p.severity||'—',s:''},
+      {l:'Optimizer',      v:'Markowitz MVO',s:'color:var(--blue)'},
     ].map(m=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">${m.l}</span><span style="font-family:var(--mono);font-weight:500;${m.s}">${m.v}</span></div>`).join('');
 
     const el=document.getElementById('port-rows');

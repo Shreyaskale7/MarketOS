@@ -312,8 +312,9 @@ def select_best_model(X, y):
 
     for name, model in candidates.items():
         scaler   = StandardScaler()
-        cv_r2    = []
-        cv_dir   = []
+        cv_r2_oos  = []
+        cv_dir_oos = []
+        cv_r2_is   = []
 
         from scipy.stats import spearmanr
         for tr_idx, te_idx in tscv.split(X):
@@ -321,26 +322,35 @@ def select_best_model(X, y):
             Xte = scaler.transform(X.iloc[te_idx])
             ytr, yte = y.iloc[tr_idx], y.iloc[te_idx]
             model.fit(Xtr, ytr)
-            preds = model.predict(Xte)
-            corr, _ = spearmanr(yte, preds)
-            ic = float(corr) if not np.isnan(corr) else 0.0
-            cv_r2.append(ic)
-            cv_dir.append((np.sign(preds) == np.sign(yte)).mean())
+            
+            # OOS (Out-Of-Sample)
+            preds_oos = model.predict(Xte)
+            corr_oos, _ = spearmanr(yte, preds_oos)
+            cv_r2_oos.append(float(corr_oos) if not np.isnan(corr_oos) else 0.0)
+            cv_dir_oos.append((np.sign(preds_oos) == np.sign(yte)).mean())
+            
+            # IS (In-Sample)
+            preds_is = model.predict(Xtr)
+            corr_is, _ = spearmanr(ytr, preds_is)
+            cv_r2_is.append(float(corr_is) if not np.isnan(corr_is) else 0.0)
 
-        avg_r2  = float(np.mean(cv_r2))
-        avg_dir = float(np.mean(cv_dir))
-        results[name] = {'r2': avg_r2, 'dir': avg_dir}
+        avg_r2_oos  = float(np.mean(cv_r2_oos))
+        avg_dir_oos = float(np.mean(cv_dir_oos))
+        avg_r2_is   = float(np.mean(cv_r2_is))
+        
+        results[name] = {'r2': avg_r2_oos, 'dir': avg_dir_oos, 'r2_is': avg_r2_is}
 
-        if avg_r2 > best_r2:
-            best_r2     = avg_r2
+        if avg_r2_oos > best_r2:
+            best_r2     = avg_r2_oos
             best_name   = name
             best_model  = model
             best_scaler = scaler
 
-    print(f"  Model comparison: " +
-          " | ".join(f"{k}: R²={v['r2']:.3f} Dir={v['dir']*100:.0f}%"
-                     for k, v in results.items()))
-    print(f"  Selected: {best_name} (R²={best_r2:.3f})")
+    print(f"  Walk-Forward Validation OOS Comparison: ")
+    for k, v in results.items():
+        overfit = (v['r2_is'] - v['r2']) / v['r2_is'] if v['r2_is'] > 0 else 0
+        print(f"    {k:<6}: IS={v['r2_is']:.3f} | OOS={v['r2']:.3f} | OOS-Dir={v['dir']*100:.0f}% | Overfit={overfit*100:.1f}%")
+    print(f"  Selected: {best_name} (OOS R²={best_r2:.3f})")
 
     return best_model, best_scaler, best_name, best_r2, results
 
@@ -372,22 +382,30 @@ def train_sector_model(subsector=None, sector=None,
             model = Ridge(alpha=0.5)
 
         tscv   = TimeSeriesSplit(n_splits=5)
-        cv_r2  = []
-        cv_dir = []
+        cv_r2_oos  = []
+        cv_dir_oos = []
+        cv_r2_is   = []
         from scipy.stats import spearmanr
         for tr_idx, te_idx in tscv.split(X):
             Xtr = scaler.fit_transform(X.iloc[tr_idx])
             Xte = scaler.transform(X.iloc[te_idx])
             ytr, yte = y.iloc[tr_idx], y.iloc[te_idx]
             model.fit(Xtr, ytr)
-            preds = model.predict(Xte)
-            corr, _ = spearmanr(yte, preds)
-            ic = float(corr) if not np.isnan(corr) else 0.0
-            cv_r2.append(ic)
-            cv_dir.append((np.sign(preds) == np.sign(yte)).mean())
+            
+            preds_oos = model.predict(Xte)
+            corr_oos, _ = spearmanr(yte, preds_oos)
+            cv_r2_oos.append(float(corr_oos) if not np.isnan(corr_oos) else 0.0)
+            cv_dir_oos.append((np.sign(preds_oos) == np.sign(yte)).mean())
+            
+            preds_is = model.predict(Xtr)
+            corr_is, _ = spearmanr(ytr, preds_is)
+            cv_r2_is.append(float(corr_is) if not np.isnan(corr_is) else 0.0)
 
-        avg_r2  = float(np.mean(cv_r2))
-        avg_dir = float(np.mean(cv_dir))
+        avg_r2  = float(np.mean(cv_r2_oos))
+        avg_dir = float(np.mean(cv_dir_oos))
+        avg_r2_is = float(np.mean(cv_r2_is))
+        overfit = (avg_r2_is - avg_r2) / avg_r2_is if avg_r2_is > 0 else 0
+        print(f"  Walk-Forward Status: IS={avg_r2_is:.3f}, OOS={avg_r2:.3f} (Overfit: {overfit*100:.1f}%)")
         chosen  = model_type
 
     # Final fit on all data

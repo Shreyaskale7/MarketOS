@@ -5,6 +5,8 @@ import os
 import json
 import time
 import requests
+import urllib.parse
+import xml.etree.ElementTree as ET
 import yfinance as yf
 from datetime import datetime
 from dotenv import load_dotenv
@@ -27,12 +29,21 @@ def fetch_headlines(sector):
     headlines = []
     for t in tickers:
         try:
-            news = yf.Ticker(t).news
-            for n in news[:3]:  # get top 3 recent news per ticker
-                title = n.get("title", "")
+            clean_name = t.split('.')[0] + " stock market news"
+            query = urllib.parse.quote(clean_name)
+            url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+            
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+            
+            for item in root.findall(".//item")[:5]:  # get top 5 recent news per ticker
+                title = item.find("title").text
                 if title:
+                    title = title.rsplit(' - ', 1)[0] # Remove source suffix
                     headlines.append(title)
-        except Exception:
+        except Exception as e:
+            print(f"Error fetching RSS for {t}: {e}")
             pass
     return headlines
 
@@ -50,7 +61,7 @@ def analyze_sentiment_groq(sector, headlines):
     You are an expert institutional quantitative analyst. 
     Analyze the following recent news headlines for the Indian '{sector}' sector.
     Provide a sentiment score between -1.0 (extremely bearish/panic) to +1.0 (extremely bullish/euphoria).
-    Also provide a 1-sentence narrative explaining the score.
+    Also provide a comprehensive 2-3 sentence narrative explaining the score, mentioning specific themes or stocks.
     
     Headlines:
     {news_text}
@@ -70,7 +81,7 @@ def analyze_sentiment_groq(sector, headlines):
             "Content-Type": "application/json"
         }
         data = {
-            "model": "llama3-8b-8192",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
             "response_format": {"type": "json_object"}

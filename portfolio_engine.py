@@ -183,25 +183,105 @@ def _enforce_theme_cap(df: pd.DataFrame, max_sector_weight: float = 0.20) -> pd.
 
 
 # ─────────────────────────────────────────────────────────────────
-# INVERSE-VOL POSITION SIZING
+# MEAN-VARIANCE OPTIMIZATION (MARKOWITZ)
 # ─────────────────────────────────────────────────────────────────
 
-def _apply_inverse_vol_sizing(df: pd.DataFrame) -> pd.DataFrame:
+def _apply_mean_variance_optimization(df: pd.DataFrame) -> pd.DataFrame:
     """
-    FIX 2 — MODERATE RISK PARITY POSITION SIZING:
-    weights = weights / (volatility ** 1.0)
-    weights = weights / weights.sum()
-    Plain 1/vol (exponent=1.0) is more balanced than 1.5 — gives moderate-vol
-    sectors a reasonable allocation while still reducing high-vol overweights.
-    Targets equal dollar-risk contribution without over-suppressing returns.
+    INSTITUTIONAL UPGRADE: Mean-Variance Optimization using scipy.
+    Maximizes the Sharpe Ratio of the selected subsectors.
+    Falls back to Inverse-Vol if covariance matrix cannot be built.
     """
+    import numpy as np
+    from scipy.optimize import minimize
+    from database import get_session, DailyPrice
+    from datetime import datetime, timedelta
+
     df = df.copy()
-    vol_clipped      = df["volatility"].clip(lower=5.0)
-    df["weight_rp"]  = df["weight"] / (vol_clipped ** 1.0)   # moderate: exponent=1.0
-    total = df["weight_rp"].sum()
-    if total > 0:
-        df["weight"] = df["weight_rp"] / total
-    return df.drop(columns=["weight_rp"])
+    if len(df) < 2:
+        df["weight"] = 1.0
+        return df
+
+    subsectors = df["subsector"].tolist()
+    
+    # Fetch returns for covariance matrix
+    session = get_session()
+    since = datetime.now() - timedelta(days=252 + 10)
+    try:
+        rows = session.query(
+            DailyPrice.date, 
+            DailyPrice.subsector, 
+            DailyPrice.daily_return,
+            DailyPrice.nifty_weight
+        ).filter(
+            DailyPrice.subsector.in_(subsectors),
+            DailyPrice.date >= since,
+            DailyPrice.daily_return.isnot(None)
+        ).all()
+    finally:
+        session.close()
+
+    def fallback(d):
+        print("  ⚠ MVO Failed/No Data. Falling back to Risk Parity.")
+        vol_clipped = d["volatility"].clip(lower=5.0)
+        d["weight"] = d["weight"] / vol_clipped
+        d["weight"] = d["weight"] / d["weight"].sum()
+        return d
+
+    if not rows:
+        return fallback(df)
+
+    # Build matrix
+    row_data = [{"date": pd.Timestamp(r.date), "subsector": r.subsector, "ret": float(r.daily_return or 0.0), "wt": float(r.nifty_weight or 0.001)} for r in rows]
+    returns_df = pd.DataFrame(row_data)
+    
+    def _wm(g):
+        w = g["wt"].sum()
+        return (g["ret"] * g["wt"]).sum() / w if w > 0 else g["ret"].mean()
+
+    pivot = returns_df.groupby(["date", "subsector"]).apply(_wm).unstack("subsector").sort_index()
+    cov_matrix = pivot.cov() * 252.0  # Annualized covariance
+    
+    # Align data
+    df = df.set_index("subsector")
+    common = df.index.intersection(cov_matrix.index)
+    
+    if len(common) < len(df):
+        df = df.reset_index()
+        return fallback(df)
+
+    mu = df.loc[common, "exp_return"].values / 100.0
+    cov = cov_matrix.loc[common, common].values / 10000.0  # convert %^2 to decimal
+    
+    n = len(mu)
+    risk_free_rate = 0.07
+
+    def neg_sharpe(w):
+        port_return = np.dot(w, mu)
+        port_vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
+        if port_vol < 1e-6:
+            return 0
+        return - (port_return - risk_free_rate) / port_vol
+
+    constraints = ({'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0})
+    bounds = tuple((0.0, 0.20) for _ in range(n))  # Max 20% per subsector pre-theme cap
+    init_w = np.array([1.0/n] * n)
+
+    try:
+        res = minimize(neg_sharpe, init_w, method='SLSQP', bounds=bounds, constraints=constraints)
+        if res.success:
+            df.loc[common, "weight"] = res.x
+        else:
+            raise ValueError("MVO did not converge")
+    except Exception as e:
+        df = df.reset_index()
+        return fallback(df)
+        
+    df = df.reset_index()
+    # Normalize to exactly 1.0 in case of rounding
+    df["weight"] = df["weight"] / df["weight"].sum()
+    print("  ✅ Mean-Variance Optimization applied successfully.")
+    return df
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -370,7 +450,7 @@ def build_portfolio(
 
     # ── STEP 7: Inverse-vol position sizing ───────────────────────
     # This is the core fix for Sharpe: equal risk contribution across sectors.
-    df = _apply_inverse_vol_sizing(df)
+    df = _apply_mean_variance_optimization(df)
 
     # ── STEP 8: Weight constraints ────────────────────────────────
     df["weight"] = df["weight"].clip(upper=MAX_WEIGHT, lower=0.0)
