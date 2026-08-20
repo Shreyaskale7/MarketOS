@@ -239,6 +239,12 @@ class User(Base):
     password_hash = Column(String(255))
     created_at    = Column(DateTime, default=datetime.utcnow)
     is_active     = Column(Boolean, default=True)
+    # SaaS tiering — free vs pro. No billing provider wired yet (§ below);
+    # plan_expires_at lets a future Stripe webhook set a real expiry instead
+    # of trusting the plan string forever.
+    plan             = Column(String(20), default="free")   # "free" | "pro"
+    plan_expires_at  = Column(DateTime, nullable=True)
+    stripe_customer_id = Column(String(80), nullable=True)
 
 
 class UserRiskProfile(Base):
@@ -281,6 +287,29 @@ def get_session():
     """Returns a new database session."""
     return SessionLocal()
 
+def _migrate_users_table():
+    """
+    create_all(checkfirst=True) only creates MISSING TABLES — it never adds
+    columns to a table that already exists. On a pre-existing database (the
+    shipped data/marketos.db, or any already-deployed instance) the new
+    plan / plan_expires_at / stripe_customer_id columns on User would
+    otherwise be silently absent and every query would raise "no such
+    column". This adds them if missing, on both SQLite and Postgres.
+    """
+    from sqlalchemy import inspect as _inspect, text as _text
+    existing = {c["name"] for c in _inspect(engine).get_columns("users")}
+    wanted = {
+        "plan":               "VARCHAR(20) DEFAULT 'free'",
+        "plan_expires_at":    "TIMESTAMP",
+        "stripe_customer_id": "VARCHAR(80)",
+    }
+    with engine.begin() as conn:
+        for col, ddl_type in wanted.items():
+            if col not in existing:
+                conn.execute(_text(f"ALTER TABLE users ADD COLUMN {col} {ddl_type}"))
+                print(f"  [migration] users.{col} added")
+
+
 def ensure_tables_exist():
     """
     Called at the start of every pipeline run.
@@ -293,6 +322,10 @@ def ensure_tables_exist():
     with _init_lock:
         if not _tables_created:
             Base.metadata.create_all(engine, checkfirst=True)
+            try:
+                _migrate_users_table()
+            except Exception as exc:
+                print(f"  [migration] users table migration skipped: {exc}")
             _tables_created = True
 
 # Auto-create tables when this module is imported

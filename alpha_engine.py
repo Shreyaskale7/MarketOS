@@ -299,6 +299,12 @@ def compute_alpha_scores(
         _active_threshold = ALPHA_EXCLUSION_THRESHOLD
     # ── END REGIME-AWARE THRESHOLD ────────────────────────────────
 
+    try:
+        from sentiment_engine import get_live_sentiment_all_sectors
+        sent_data = get_live_sentiment_all_sectors(force_refresh=False)
+    except Exception:
+        sent_data = {}
+
     result       = {}
     excluded_cnt = 0
     for sub in all_subs:
@@ -306,6 +312,15 @@ def compute_alpha_scores(
         excluded = score < _active_threshold
         if excluded:
             excluded_cnt += 1
+            
+        parent_sector = "Unknown"
+        for sec_name, sec_data in MARKET_CLASSIFICATION.items():
+            if sub in sec_data["subsectors"]:
+                parent_sector = sec_name
+                break
+                
+        rationale = sent_data.get(parent_sector, {}).get("rationale", "No AI insight available.")
+        
         result[sub] = {
             "alpha_score":      round(score, 4),
             "momentum":         round(float(mom_norm.get(sub, 0.5)), 4),
@@ -313,6 +328,7 @@ def compute_alpha_scores(
             "vol_breakout":     round(float(vol_norm.get(sub, 0.5)), 4),
             "macro_alignment":  round(float(mac_norm.get(sub, 0.5)), 4),
             "sentiment":        round(float(sen_norm.get(sub, 0.5)), 4),
+            "sentiment_rationale": rationale,
             "raw_momentum_pct": round(float(mom_raw.get(sub, 0.0)), 2),
             "signal_rank":      rank_map.get(sub, len(all_subs)),
             "excluded":         excluded,

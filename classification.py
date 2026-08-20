@@ -406,7 +406,7 @@ MARKET_CLASSIFICATION = {
                 },
                 "companies": {
                     "Maruti Suzuki":            {"ticker": "MARUTI.NS",      "sector_weight": 0.026},
-                    "Tata Motors":              {"ticker": "M&M.NS",          "sector_weight": 0.018},
+                    "Tata Motors":              {"ticker": "TATAMOTORS.NS",  "sector_weight": 0.018},
                     "Mahindra & Mahindra":      {"ticker": "M&M.NS",         "sector_weight": 0.024},
                     "Hyundai Motor India":      {"ticker": "HYUNDAI.NS",     "sector_weight": 0.008},
                 }

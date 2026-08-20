@@ -1,0 +1,52 @@
+# render.yaml — MarketOS free-tier deployment on Render.
+#
+# Deploys the Flask API + dashboard as a free web service, backed by a
+# free Render Postgres instance (SQLite has no persistent disk on Render's
+# free plan — every redeploy wipes an on-disk file).
+#
+# What this does NOT do:
+#   - Populate the database. Free web services time out long before the
+#     30-90 minute `--setup` first-time load finishes. Run --setup and
+#     --train-ml LOCALLY, pointed at this service's DATABASE_URL, once,
+#     before relying on the deployed API. See the deploy checklist.
+#   - Schedule the daily pipeline. Render free web services sleep after 15
+#     minutes idle, so an in-process APScheduler job will not fire
+#     reliably. Use an external cron (cron-job.org, or a GitHub Actions
+#     scheduled workflow) to POST /api/run/daily once after market close.
+#   - Enable billing. ENABLE_DEV_BILLING_STUB is deliberately NOT set here,
+#     so /api/billing/upgrade returns 503 until a real payment provider is
+#     wired in. Do not set it to "true" on this service.
+
+databases:
+  - name: marketos-db
+    databaseName: marketos_db
+    user: marketos
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: marketos-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn marketos_api:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 600
+    healthCheckPath: /api/healthcheck
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketos-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHON_VERSION
+        value: "3.10.14"

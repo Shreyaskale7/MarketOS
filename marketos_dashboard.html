@@ -1063,7 +1063,7 @@ async function loadAlpha(){
     const active=entries.filter(([,v])=>!v.excluded).length;
     document.getElementById('alpha-sum').textContent=`Scored:${entries.length} Active:${active} Excl:${entries.length-active}`;
     document.getElementById('alpha-rows').innerHTML=entries.map(([sub,sc])=>`
-      <div class="ar" style="${sc.excluded?'opacity:.45':''}">
+      <div class="ar" style="${sc.excluded?'opacity:.45':''}" title="AI Rationale: ${sc.sentiment_rationale ? sc.sentiment_rationale.replace(/"/g, '&quot;') : 'No data'}">
         <span style="font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center">${sc.signal_rank}</span>
         <div><div style="font-size:12px;font-weight:500">${sub}</div></div>
         <span class="mono" style="${cs(sc.alpha_score-.4)}">${f(sc.alpha_score,3)}</span>

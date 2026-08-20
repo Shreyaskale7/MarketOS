@@ -7,16 +7,26 @@ import json
 from datetime import datetime
 
 # Proxy ETF mapping (Sector -> NSE Ticker)
+# Keys MUST match classification.MARKET_CLASSIFICATION sector names exactly
+# — a mismatch here fails silently (falls through to DEFAULT_ETF below) with
+# no error raised, which is how 4 of 7 sectors previously executed against
+# the plain NIFTY index instead of their intended sector ETF.
 ETF_MAP = {
     "Banking & Financial Services": "BANKBEES.NS",
-    "IT & Tech": "ITBEES.NS",
-    "FMCG & Consumption": "CONSUMBEES.NS",
-    "Healthcare & Pharma": "PHARMABEES.NS",
+    "IT & Technology":              "ITBEES.NS",
+    "Consumer Goods & Retail":      "CONSUMBEES.NS",
+    "Pharmaceuticals":              "PHARMABEES.NS",
     "Infrastructure & Real Estate": "INFRA.NS",
-    "Automobiles": "AUTOBEES.NS",
-    "Energy & Utilities": "CPSEETF.NS",
+    "Automobiles":                  "AUTOBEES.NS",
+    "Energy & Oil & Gas":           "CPSEETF.NS",
 }
 DEFAULT_ETF = "NIFTYBEES.NS" # Fallback for unmapped sectors
+
+# NOTE: the ETF tickers above have NOT been re-verified against a live NSE
+# listing as part of this fix — only the dict KEYS were corrected to match
+# classification.py's actual sector names (the confirmed bug). Confirm each
+# ticker is a real, currently-listed NSE ETF before routing real capital
+# through PaperBroker in anything beyond simulation.
 
 class PaperBroker:
     def __init__(self, user_id: int, initial_capital: float = 100000.0):

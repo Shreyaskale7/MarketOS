@@ -137,11 +137,46 @@ def check_bootstrap():
             "progress": progress
         }), 200
 
-# Secret key for JWT signing. In production, this MUST be an environment variable.
-JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-dev-key")
+# ── JWT secret ──────────────────────────────────────────────────────
+# Refuse to boot on a real deployment with the dev fallback secret still
+# active — that fallback let anyone who has read this file forge a token
+# for any user_id. RENDER/production platforms set FLASK_ENV=production (or
+# you can set IS_PRODUCTION=true yourself); local dev is unaffected.
+_IS_PRODUCTION = os.environ.get("FLASK_ENV") == "production" or os.environ.get("IS_PRODUCTION") == "true"
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    if _IS_PRODUCTION:
+        raise RuntimeError(
+            "JWT_SECRET is not set. Refusing to start in production with no "
+            "signing key — set JWT_SECRET in the environment (Render: "
+            "'generateValue: true' in render.yaml)."
+        )
+    JWT_SECRET = "super-secret-dev-key"
+    print("  [auth] WARNING: JWT_SECRET not set — using an insecure dev "
+          "default. Do not deploy like this.")
+
+# ── Password hashing ────────────────────────────────────────────────
+import bcrypt as _bcrypt
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    """bcrypt with a per-password random salt, cost factor 12."""
+    return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt(rounds=12)).decode("utf-8")
+
+def _looks_like_legacy_sha256(stored_hash: str) -> bool:
+    # sha256 hexdigest is 64 hex chars; bcrypt hashes start with $2b$ and are ~60 chars.
+    return len(stored_hash) == 64 and not stored_hash.startswith("$2")
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    if _looks_like_legacy_sha256(stored_hash):
+        # Old unsalted-SHA256 accounts (pre-bcrypt migration). Verify against
+        # the legacy scheme so existing users aren't locked out, then the
+        # caller re-hashes with bcrypt and saves it — a one-time, transparent
+        # upgrade on next successful login.
+        return hashlib.sha256(password.encode()).hexdigest() == stored_hash
+    try:
+        return _bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+    except ValueError:
+        return False
 
 def require_auth(f):
     @wraps(f)
@@ -160,6 +195,49 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
+
+PLAN_RANK = {"free": 0, "pro": 1}
+
+def _current_plan(user_id: int) -> str:
+    """Reads the caller's plan, treating an expired pro plan as free."""
+    from database import get_session, User
+    session = get_session()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return "free"
+        if user.plan == "pro" and user.plan_expires_at and user.plan_expires_at < datetime.utcnow():
+            return "free"
+        return user.plan or "free"
+    finally:
+        session.close()
+
+def require_plan(min_plan: str):
+    """
+    Gate a route behind a subscription tier. Must be stacked UNDER
+    @require_auth (auth runs first so request.user_id exists):
+
+        @app.route(...)
+        @require_auth
+        @require_plan("pro")
+        def handler(): ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            plan = _current_plan(request.user_id)
+            if PLAN_RANK.get(plan, 0) < PLAN_RANK.get(min_plan, 0):
+                return jsonify({
+                    "status": "error",
+                    "code": "UPGRADE_REQUIRED",
+                    "message": f"This endpoint requires the '{min_plan}' plan; your plan is '{plan}'.",
+                    "current_plan": plan,
+                    "required_plan": min_plan,
+                }), 402   # 402 Payment Required — the correct status for this
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
 # ── Global pipeline job tracker ──────────────────────────────────
 _job_status = {"running": False, "job": None, "started_at": None, "result": None}
 
@@ -174,29 +252,30 @@ def auth_register():
         email = data.get("email")
         password = data.get("password")
         if not email or not password:
-            return error("Email and password required"), 400
+            return error("Email and password required", 400)
         
         from database import get_session, User
         session = get_session()
         existing = session.query(User).filter_by(email=email).first()
         if existing:
             session.close()
-            return error("User already exists"), 400
+            return error("User already exists", 400)
         
         new_user = User(
             uuid=str(uuid.uuid4()),
             email=email,
-            password_hash=hash_password(password)
+            password_hash=hash_password(password),
+            plan="free",
         )
         session.add(new_user)
         session.commit()
-        
+
         token = jwt.encode({
             "user_id": new_user.id,
             "exp": datetime.utcnow() + timedelta(days=7)
         }, JWT_SECRET, algorithm="HS256")
-        
-        res = {"user_id": new_user.id, "email": new_user.email, "token": token}
+
+        res = {"user_id": new_user.id, "email": new_user.email, "plan": new_user.plan, "token": token}
         session.close()
         return success_auth(res)
     except Exception as e:
@@ -209,22 +288,31 @@ def auth_login():
         email = data.get("email")
         password = data.get("password")
         if not email or not password:
-            return error("Email and password required"), 400
+            return error("Email and password required", 400)
         
         from database import get_session, User
         session = get_session()
         user = session.query(User).filter_by(email=email).first()
-        if not user or user.password_hash != hash_password(password):
+        if not user or not verify_password(password, user.password_hash):
             session.close()
-            return error("Invalid credentials"), 401
-            
+            return error("Invalid credentials", 401)
+
+        # Transparent upgrade: a legacy unsalted-SHA256 hash that just
+        # verified correctly gets re-hashed with bcrypt and saved, so the
+        # account is protected by the strong scheme from here on without
+        # ever forcing a password reset.
+        if _looks_like_legacy_sha256(user.password_hash):
+            user.password_hash = hash_password(password)
+            session.commit()
+
         token = jwt.encode({
             "user_id": user.id,
             "exp": datetime.utcnow() + timedelta(days=7)
         }, JWT_SECRET, algorithm="HS256")
-        
+
+        res = {"user_id": user.id, "email": user.email, "plan": user.plan or "free", "token": token}
         session.close()
-        return success_auth({"user_id": user.id, "email": user.email, "token": token})
+        return success_auth(res)
     except Exception as e:
         return error(str(e))
 
@@ -236,8 +324,80 @@ def auth_me():
     user = session.query(User).filter_by(id=request.user_id).first()
     session.close()
     if not user:
-        return error("User not found"), 404
-    return success_auth({"user_id": user.id, "email": user.email})
+        return error("User not found", 404)
+    return success_auth({
+        "user_id": user.id,
+        "email": user.email,
+        "plan": _current_plan(user.id),
+        "plan_expires_at": user.plan_expires_at.isoformat() if user.plan_expires_at else None,
+    })
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE 0.6 — BILLING (stub)
+#
+# No payment provider is wired in yet — there is no Stripe/Razorpay key in
+# .env. This gives the app the plumbing (plan on the user row, a gate
+# decorator, an upgrade endpoint) so wiring a real webhook later is a
+# contained change: point this endpoint at a verified Stripe/Razorpay
+# checkout-session webhook instead of trusting the caller directly, and
+# nothing else in the codebase needs to change — every gated route already
+# reads the plan from the database.
+# ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/billing/status", methods=["GET"])
+@require_auth
+def billing_status():
+    from database import get_session, User
+    session = get_session()
+    user = session.query(User).filter_by(id=request.user_id).first()
+    session.close()
+    if not user:
+        return error("User not found", 404)
+    return success({
+        "plan": _current_plan(user.id),
+        "plan_expires_at": user.plan_expires_at.isoformat() if user.plan_expires_at else None,
+        "gated_endpoints": {
+            "free_tier_limit": "1M horizon only, on /api/portfolio and /api/forecasts",
+            "pro_only": ["/api/backtest", "3M/6M/12M horizons on /api/portfolio and /api/forecasts"],
+        },
+        "upgrade_available": (
+            os.environ.get("ENABLE_DEV_BILLING_STUB", "false").lower() == "true" and not _IS_PRODUCTION
+        ),
+    })
+
+@app.route("/api/billing/upgrade", methods=["POST"])
+@require_auth
+def billing_upgrade():
+    """
+    DEV/DEMO STUB — flips the caller to 'pro' for 30 days with no payment
+    taken. Wire a real provider before this is public: verify a Stripe
+    checkout.session.completed webhook signature (or Razorpay's payment
+    webhook) server-side, then set the plan from THAT handler instead of
+    from a client-callable route like this one.
+    """
+    # Hard off-switch: this route grants pro for free, so it must not be
+    # reachable once real users can sign up, until a real payment provider
+    # replaces it. Set ENABLE_DEV_BILLING_STUB=true only in local/dev envs.
+    if not (os.environ.get("ENABLE_DEV_BILLING_STUB", "false").lower() == "true" and not _IS_PRODUCTION):
+        return error(
+            "Billing is not yet available. This deployment does not grant "
+            "the pro plan without a real payment — the dev stub is disabled.",
+            503,
+        )
+
+    from database import get_session, User
+    session = get_session()
+    user = session.query(User).filter_by(id=request.user_id).first()
+    if not user:
+        session.close()
+        return error("User not found", 404)
+    user.plan = "pro"
+    user.plan_expires_at = datetime.utcnow() + timedelta(days=30)
+    session.commit()
+    plan_expires = user.plan_expires_at.isoformat()
+    session.close()
+    return success({"plan": "pro", "plan_expires_at": plan_expires,
+                    "note": "Dev stub — no payment taken. Replace with a real billing webhook before launch."})
 
 # ─────────────────────────────────────────────────────────────────
 # ROUTE 0.5 — RISK PROFILING
@@ -298,7 +458,7 @@ def handle_execution():
         session.close()
         
         if not portfolio_record:
-            return error("No portfolio generated yet. Please generate a portfolio first."), 400
+            return error("No portfolio generated yet. Please generate a portfolio first.", 400)
             
         weights = json.loads(portfolio_record.portfolio_json)
         
@@ -450,8 +610,8 @@ def pipeline_status():
 def sentiment_data():
     try:
         from sentiment_engine import get_live_sentiment_all_sectors
-        # force_refresh=True on first call so we never serve stale empty cache
-        sentiment = get_live_sentiment_all_sectors(force_refresh=True)
+        # force_refresh=False so we use cache and prevent long blocking calls / timeouts
+        sentiment = get_live_sentiment_all_sectors(force_refresh=False)
         return success({"sentiment": sentiment})
     except Exception as exc:
         return error(f"Sentiment engine error: {str(exc)}")
@@ -559,12 +719,21 @@ def alpha_signals():
 
 _PORTFOLIO_CACHE = {}
 
+FREE_TIER_HORIZONS = {"1M"}   # everything else is a pro-plan feature
+
 @app.route("/api/portfolio")
 @require_auth
 def portfolio():
     try:
         horizon = request.args.get("horizon", "3M")
-        
+
+        if horizon not in FREE_TIER_HORIZONS and _current_plan(request.user_id) != "pro":
+            return jsonify({
+                "status": "error", "code": "UPGRADE_REQUIRED",
+                "message": f"The '{horizon}' horizon is a pro-plan feature. Free plan includes 1M only.",
+                "current_plan": "free", "required_plan": "pro",
+            }), 402
+
         from database import get_session, UserRiskProfile, UserPortfolio
         session_risk = get_session()
         risk_profile = session_risk.query(UserRiskProfile).filter_by(user_id=request.user_id).first()
@@ -704,6 +873,30 @@ def portfolio():
 # ROUTE 6 — FORWARD FORECASTS
 # ─────────────────────────────────────────────────────────────────
 
+def _optional_plan() -> str:
+    """
+    Like _current_plan(), but for routes that stay browsable by anonymous
+    visitors (a normal SaaS pattern — let people see a teaser before they
+    sign up) while still rewarding a logged-in pro account. No token, an
+    expired token, or a free-plan token all resolve to "free"; only a
+    valid token belonging to a pro-plan user resolves to "pro".
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return "free"
+    try:
+        payload = jwt.decode(auth_header.split(" ")[1], JWT_SECRET, algorithms=["HS256"])
+        return _current_plan(payload.get("user_id"))
+    except jwt.InvalidTokenError:
+        return "free"
+
+def _filter_forecasts_by_plan(rows: list) -> tuple:
+    """Free tier sees 1M only; pro sees every horizon. Returns (visible, locked_count)."""
+    if _optional_plan() == "pro":
+        return rows, 0
+    visible = [r for r in rows if r.get("horizon") in FREE_TIER_HORIZONS]
+    return visible, len(rows) - len(visible)
+
 @app.route("/api/forecasts")
 def forecasts():
     try:
@@ -745,7 +938,9 @@ def forecasts():
                             "risk_factor":      data.get("risk_factor", ""),
                             "generated_date":   str(pd_date),
                         })
-            return success({"forecasts": out, "source": "live", "count": len(out)})
+            visible, locked = _filter_forecasts_by_plan(out)
+            return success({"forecasts": visible, "source": "live", "count": len(visible),
+                            "locked_by_plan": locked})
 
         out = [{
             "id":               r.id,
@@ -762,7 +957,9 @@ def forecasts():
             "generated_date":   str(r.generated_date),
         } for r in rows]
 
-        return success({"forecasts": out, "source": "database", "count": len(out)})
+        visible, locked = _filter_forecasts_by_plan(out)
+        return success({"forecasts": visible, "source": "database", "count": len(visible),
+                        "locked_by_plan": locked})
     except Exception as exc:
         return error(f"Forecasts error: {str(exc)}")
 
@@ -884,7 +1081,23 @@ def backtest():
                 return obj.isoformat()
             return obj
 
-        return success({"backtest": _clean(results), "years": years})
+        cleaned = _clean(results)
+
+        # Free tier / anonymous: headline metrics only — enough to trust the
+        # system, not enough to reconstruct period-by-period weights, which
+        # is the part worth paying for. Pro: full equity curve and per-period
+        # detail, matching the 12-step construction detail in the bible.
+        if _optional_plan() != "pro" and isinstance(cleaned, dict):
+            cleaned = {
+                "status":         cleaned.get("status"),
+                "generated_at":   cleaned.get("generated_at"),
+                "lookback_years": cleaned.get("lookback_years"),
+                "n_periods":      cleaned.get("n_periods"),
+                "metrics":        cleaned.get("metrics"),
+                "locked_by_plan": ["equity_curve", "period_returns", "per_period_weights"],
+            }
+
+        return success({"backtest": cleaned, "years": years})
     except Exception as exc:
         return error(f"Backtest engine error: {str(exc)}")
 
