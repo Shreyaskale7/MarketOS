@@ -74,6 +74,8 @@ except ImportError:
         def limit(self, *args, **kwargs):
             def decorator(f): return f
             return decorator
+        def exempt(self, f):
+            return f
     limiter = DummyLimiter()
 
 # --- Security Headers ---
@@ -95,6 +97,7 @@ def is_bootstrapping():
     return BOOTSTRAP_STATE.get("is_running", False)
 
 @app.route("/")
+@limiter.exempt
 def root():
     return jsonify({
         "application": "MarketOS",
@@ -114,10 +117,12 @@ def dashboard():
         return f"Dashboard not found: {e}", 404
 
 @app.route("/api/bootstrap-status")
+@limiter.exempt
 def bootstrap_status():
     return jsonify(BOOTSTRAP_STATE)
 
 @app.route("/api/routes")
+@limiter.exempt
 def get_routes():
     routes = []
     for rule in app.url_map.iter_rules():
@@ -505,10 +510,12 @@ def safe_import(module_name: str):
 # ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/healthcheck")
+@limiter.exempt
 def healthcheck():
     return success({"message": "MarketOS API is running", "version": "2.0"})
 
 @app.route("/api/health/deep")
+@limiter.exempt
 def healthcheck_deep():
     try:
         from database import get_session, MacroData, DailyPrice, ForwardForecast
