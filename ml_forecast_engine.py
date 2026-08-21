@@ -413,7 +413,19 @@ def build_training_dataset(subsector=None, sector=None, lookback_years=10):
         return pd.Series(result, index=r_series.index)
 
     # Each horizon trained on its OWN forward target
-    nifty_daily_ret = m["nifty_return"].reindex(feat.index).fillna(0.0)
+    #
+    # UNIT FIX: daily_ret (sector, from daily_prices.daily_return) is a
+    # FRACTION (0.012 = 1.2%). macro_data.nifty_return is stored as a
+    # PERCENT (-8.3019 = -8.30%, confirmed against the DB). _compound_forward
+    # does (1.0 + value) assuming a fraction on both sides — fed the raw
+    # percent value, a day like the 2020-03-23 COVID crash (-12.98%) became
+    # (1.0 + -12.98) = -11.98, a negative base compounded over a 21-126 day
+    # window, producing sign-flipping, astronomically large "returns" in the
+    # hundreds of millions of percent. Divide by 100 here so both series
+    # compound in the same units; every OTHER use of m["nifty_return"]
+    # elsewhere in this file is a plain feature (not compounded), so it
+    # intentionally stays in percent form and is left untouched.
+    nifty_daily_ret = (m["nifty_return"] / 100.0).reindex(feat.index).fillna(0.0)
     feat["future_return_21d"]  = _compound_forward(daily_ret, nifty_daily_ret, 21)   # 1M
     feat["future_return_63d"]  = _compound_forward(daily_ret, nifty_daily_ret, 63)   # 3M
     feat["future_return_126d"] = _compound_forward(daily_ret, nifty_daily_ret, 126)  # 6M — FIX: was using 63d

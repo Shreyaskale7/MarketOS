@@ -16,6 +16,16 @@ pandas==2.2.2
 scikit-learn==1.4.2
 scipy==1.13.1
 
+# Gradient boosters — part of the 4-way model tournament in
+# ml_forecast_engine.train_horizon_models() (RF, Ridge, XGBoost, LightGBM;
+# top-3 by walk-forward IC ensembled). The import is wrapped in try/except
+# so training silently degrades to a 2-way RF/Ridge tournament if these are
+# missing — which is exactly what would have happened on every fresh
+# install (including Render) since they were previously used in code but
+# never declared here. Versions pinned to what is confirmed working locally.
+xgboost==3.2.0
+lightgbm==4.6.0
+
 # Market data
 yfinance==0.2.54
 requests==2.32.3
