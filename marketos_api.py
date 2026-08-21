@@ -538,7 +538,14 @@ def healthcheck_deep():
         "macro_data": macro_ok,
         "daily_prices": prices_ok,
         "forecasts": forecasts_ok,
-        "pipeline_ready": not BOOTSTRAP_STATE["is_running"] and BOOTSTRAP_STATE["pipeline_ready"]
+        # Derived directly from real DB counts, not the in-memory
+        # BOOTSTRAP_STATE dict — that dict only ever gets updated by the
+        # background auto-bootstrap thread, which never runs at all once
+        # AUTO_BOOTSTRAP=false (the correct setting once the DB is already
+        # seeded, e.g. via a local `main.py --setup` / `--daily` run
+        # pointed at the same DATABASE_URL). Depending on it meant this
+        # field could stay false forever regardless of real DB state.
+        "pipeline_ready": db_connected and macro_ok and prices_ok and forecasts_ok
     })
 
 # ─────────────────────────────────────────────────────────────────
