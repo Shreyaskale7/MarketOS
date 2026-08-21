@@ -661,12 +661,29 @@ def macro_data():
 # ROUTE 4 — ALPHA SIGNALS
 # ─────────────────────────────────────────────────────────────────
 
+_ALPHA_CACHE = {}
+
 @app.route("/api/alpha")
 def alpha_signals():
     try:
         from macro_engine import fetch_live_macro_data, classify_macro_regime
         from alpha_engine import compute_alpha_scores
         from classification import MARKET_CLASSIFICATION
+        from pipeline_utils import get_pipeline_date as _gpd
+
+        # Cache keyed on the pipeline date. Without this, EVERY visit to the
+        # Alpha tab re-read ~90 days of prices for all 28 subsectors and
+        # re-ran the sentiment engine -- so simply navigating away and back
+        # re-did the whole computation, which on a free instance routinely
+        # outran the browser's patience and left the panel showing the
+        # generic "run pipeline first" catch-block message. Alpha scores
+        # only change when the pipeline date changes, so caching on that is
+        # both safe and exactly as fresh as the underlying data.
+        _alpha_key = str(_gpd())
+        if _alpha_key in _ALPHA_CACHE:
+            _hit = _ALPHA_CACHE[_alpha_key]
+            return success({"alpha": _hit["alpha"], "total_sectors": _hit["total"],
+                            "cached": True})
 
         macro  = fetch_live_macro_data()
         regime = classify_macro_regime(macro)
@@ -721,7 +738,13 @@ def alpha_signals():
             reverse=True
         ))
 
-        return success({"alpha": sorted_alpha, "total_sectors": len(alpha)})
+        # Keep only the newest entry — this is keyed by date, so stale keys
+        # are pure memory waste on a 512MB instance.
+        _ALPHA_CACHE.clear()
+        _ALPHA_CACHE[_alpha_key] = {"alpha": sorted_alpha, "total": len(alpha)}
+
+        return success({"alpha": sorted_alpha, "total_sectors": len(alpha),
+                        "cached": False})
     except Exception as exc:
         import traceback; traceback.print_exc()
         return error(f"Alpha engine error: {str(exc)}")
