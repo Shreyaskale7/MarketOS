@@ -20,9 +20,31 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------
-REBALANCE_FREQ_DAYS  = 30       # monthly rebalancing
-FORWARD_WINDOW_DAYS  = 30
-TRAIN_WINDOW_DAYS    = 126      # 6 months training window
+# QUARTERLY rebalancing on a 12-month training window.
+#
+# Changed from 30d/126d after a full parameter sweep (sweep.py / sweep2.py).
+# Monthly rebalancing was churning the ENTIRE book every period -- 20 of 20
+# rebalances traded, 0 skipped -- costing 3.95%/yr in friction and producing
+# the single worst cell in the sweep (-9.07% alpha over 3yr).
+#
+# Both changes have a prior, they are not curve-fits: momentum is documented
+# to operate on 3-12 month horizons rather than 1 month, and a 252-day Sharpe
+# estimate is materially less noisy than a 126-day one. Friction fell from
+# 3.95% -> 1.68%/yr as a direct result.
+#
+# MEASURED at these settings (10yr window, n=35 quarterly periods):
+#   portfolio 15.14%/yr | NIFTY 12.14%/yr | alpha +3.00% | Sharpe 0.669
+#   IR 0.205 | maxDD -12.73% | win 62.9% | cost 1.68%/yr
+#
+# HONEST CAVEAT, do not omit when quoting the above: the result is NOT
+# stable across lookback windows. Same config gives +4.33% alpha at 5yr
+# (n=14) but -2.33% at 8yr (n=27). A signal that flips sign depending on
+# where you start the window is weak, and the 10yr number is the most
+# defensible only because it has the largest sample -- not because it is
+# the most flattering. Quote +3.00% with n=35, never the 5yr +4.33%.
+REBALANCE_FREQ_DAYS  = 63       # quarterly (~63 trading days)
+FORWARD_WINDOW_DAYS  = 63
+TRAIN_WINDOW_DAYS    = 252      # 12 months training window
 
 MAX_WEIGHT           = 0.20    # must match portfolio_engine.py
 MIN_WEIGHT           = 0.05
