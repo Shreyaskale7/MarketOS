@@ -550,9 +550,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 
 <script>
 // ─────────────────────────────────────────────────────────────────
-// CONFIG — update this URL if using ngrok or production
+// CONFIG — this page is served BY the same Flask app it calls
+// (see @app.route("/dashboard") in marketos_api.py), so using the
+// page's own origin means it works correctly whether it's opened at
+// http://localhost:5001/dashboard or https://<your-app>.onrender.com/dashboard,
+// with no manual URL edit ever needed again.
 // ─────────────────────────────────────────────────────────────────
-const API = 'http://localhost:5001';
+const API = window.location.origin;
 
 // ─────────────────────────────────────────────────────────────────
 // STATE & AUTH
