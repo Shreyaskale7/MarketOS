@@ -155,11 +155,59 @@ def analyze_sentiment_groq(sector, headlines):
 _SENTIMENT_CACHE = None
 _CACHE_TIMESTAMP = 0
 
-def get_live_sentiment_all_sectors(force_refresh=False):
+import threading as _threading
+_REFRESH_LOCK = _threading.Lock()
+_REFRESH_RUNNING = False
+
+
+def _background_refresh():
+    """Warms the sentiment cache off the request path."""
+    global _REFRESH_RUNNING
+    try:
+        get_live_sentiment_all_sectors(force_refresh=True, blocking=True)
+    except Exception as exc:
+        print(f"  [Sentiment] background refresh failed: {exc}")
+    finally:
+        with _REFRESH_LOCK:
+            _REFRESH_RUNNING = False
+
+
+def _start_background_refresh():
+    global _REFRESH_RUNNING
+    with _REFRESH_LOCK:
+        if _REFRESH_RUNNING:
+            return
+        _REFRESH_RUNNING = True
+    _threading.Thread(target=_background_refresh, daemon=True).start()
+    print("  [Sentiment] cache cold/stale — refreshing in background, serving neutral for now")
+
+
+def get_live_sentiment_all_sectors(force_refresh=False, blocking=None):
+    """
+    blocking=True  -> fetch synchronously (correct for `main.py --daily`,
+                      which wants real sentiment baked into what it stores).
+    blocking=False -> never block the caller: return whatever is cached
+                      (possibly nothing) and warm the cache in a background
+                      thread instead.
+
+    Why this exists: a cold cache means 7 sectors x (LLM call + a 1s
+    inter-sector sleep), measured at ~37s end-to-end. /api/alpha calls this
+    synchronously, so on Render -- where the free instance sleeps and drops
+    the in-memory cache constantly -- the very next Alpha/Portfolio request
+    hung for ~37s, the browser gave up, and every panel fell into its catch
+    block showing "run pipeline first". Sentiment is 20% of one factor in a
+    composite score; it is never worth hanging the whole dashboard for.
+
+    Default is taken from SENTIMENT_BLOCKING (default "false") so the
+    deployed API is non-blocking while CLI runs can opt back in.
+    """
     global _SENTIMENT_CACHE, _CACHE_TIMESTAMP
-    
+
+    if blocking is None:
+        blocking = os.getenv("SENTIMENT_BLOCKING", "false").lower() == "true"
+
     cache_file = "data/sentiment_cache.json"
-    
+
     # Try to load from file on very first call if memory cache is empty
     if _SENTIMENT_CACHE is None:
         if os.path.exists(cache_file):
@@ -171,11 +219,19 @@ def get_live_sentiment_all_sectors(force_refresh=False):
                 print(f"  [Sentiment] Loaded persistent cache from {cache_file} (age: {round(time.time() - _CACHE_TIMESTAMP)}s)")
             except Exception as e:
                 print(f"  [Sentiment] Warning: Failed to load persistent cache: {e}")
-                
+
     # If not forced, use memory/file cache if it is under 12 hours old
     if not force_refresh and _SENTIMENT_CACHE and (time.time() - _CACHE_TIMESTAMP < 43200):
         return _SENTIMENT_CACHE
-        
+
+    # Cold or stale, and the caller cannot afford to wait: warm it off-thread
+    # and hand back whatever we have. Empty dict is safe -- alpha_engine's
+    # _signal_sentiment falls back to a neutral 50.0 for missing sectors.
+    if not blocking:
+        _start_background_refresh()
+        return _SENTIMENT_CACHE or {}
+
+
     print("\n=== LLM SENTIMENT ENGINE ===")
     results = {}
     try:

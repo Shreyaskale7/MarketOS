@@ -759,6 +759,18 @@ def run_daily_pipeline(date=None, print_report=True):
     if all_forecasts:
         # ── Alpha signals FIRST — needed to filter portfolio ───────
         try:
+            # Warm sentiment SYNCHRONOUSLY here. The engine now defaults to
+            # non-blocking so the web API never hangs ~37s on a cold cache
+            # (see sentiment_engine.get_live_sentiment_all_sectors), but the
+            # daily pipeline is exactly the place that SHOULD wait: whatever
+            # it computes gets persisted, so it must be real sentiment, not
+            # a neutral placeholder.
+            try:
+                from sentiment_engine import get_live_sentiment_all_sectors
+                get_live_sentiment_all_sectors(force_refresh=True, blocking=True)
+            except Exception as _e:
+                print(f"  Sentiment warm-up skipped: {_e}")
+
             print("\n[+] Computing alpha signals...")
             from alpha_engine import compute_alpha_scores
             alpha_scores = compute_alpha_scores(moderated, macro_data, regime)
