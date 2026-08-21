@@ -733,20 +733,19 @@ def alpha_signals():
 
 _PORTFOLIO_CACHE = {}
 
-FREE_TIER_HORIZONS = {"1M"}   # everything else is a pro-plan feature
+# FREE_TIER_HORIZONS previously gated non-1M horizons behind the pro plan.
+# Disabled for now while the core product is still being validated end to
+# end — gating a not-yet-fully-working product just hides real bugs from
+# the person trying to test it. The set and the plan-check plumbing
+# (_current_plan, _optional_plan, require_plan) are left in place below so
+# re-enabling this later is a small, contained change, not a rebuild.
+FREE_TIER_HORIZONS = {"1M", "3M", "6M", "12M"}   # all horizons currently free
 
 @app.route("/api/portfolio")
 @require_auth
 def portfolio():
     try:
         horizon = request.args.get("horizon", "3M")
-
-        if horizon not in FREE_TIER_HORIZONS and _current_plan(request.user_id) != "pro":
-            return jsonify({
-                "status": "error", "code": "UPGRADE_REQUIRED",
-                "message": f"The '{horizon}' horizon is a pro-plan feature. Free plan includes 1M only.",
-                "current_plan": "free", "required_plan": "pro",
-            }), 402
 
         from database import get_session, UserRiskProfile, UserPortfolio
         session_risk = get_session()
@@ -1097,19 +1096,10 @@ def backtest():
 
         cleaned = _clean(results)
 
-        # Free tier / anonymous: headline metrics only — enough to trust the
-        # system, not enough to reconstruct period-by-period weights, which
-        # is the part worth paying for. Pro: full equity curve and per-period
-        # detail, matching the 12-step construction detail in the bible.
-        if _optional_plan() != "pro" and isinstance(cleaned, dict):
-            cleaned = {
-                "status":         cleaned.get("status"),
-                "generated_at":   cleaned.get("generated_at"),
-                "lookback_years": cleaned.get("lookback_years"),
-                "n_periods":      cleaned.get("n_periods"),
-                "metrics":        cleaned.get("metrics"),
-                "locked_by_plan": ["equity_curve", "period_returns", "per_period_weights"],
-            }
+        # Free-tier truncation (equity curve / per-period weights hidden)
+        # disabled for now — see the FREE_TIER_HORIZONS comment above.
+        # Full backtest detail, including the equity curve, is returned to
+        # everyone while the core product is still being validated.
 
         return success({"backtest": cleaned, "years": years})
     except Exception as exc:
