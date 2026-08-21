@@ -1230,15 +1230,22 @@ def insights():
         out = []
         for r in rows:
             date_str = str(r.date)
-            forward_insight = ""
-            json_path = os.path.join("outputs", f"marketos_daily_{date_str}.json")
-            if os.path.exists(json_path):
-                try:
-                    with open(json_path, "r", encoding="utf-8") as f_json:
-                        daily_data = json.load(f_json)
-                        forward_insight = daily_data.get("forward_insight", "")
-                except Exception:
-                    pass
+            # Prefer the DB column. This previously read ONLY from
+            # outputs/marketos_daily_<date>.json, which exists on the machine
+            # that ran the pipeline and never on Render (ephemeral filesystem,
+            # and those artefacts are gitignored) -- so the deployed
+            # "Forecast Intelligence" panel was structurally guaranteed to be
+            # empty. The JSON path is kept as a fallback for rows written
+            # before the forward_insight column existed.
+            forward_insight = getattr(r, "forward_insight", None) or ""
+            if not forward_insight:
+                json_path = os.path.join("outputs", f"marketos_daily_{date_str}.json")
+                if os.path.exists(json_path):
+                    try:
+                        with open(json_path, "r", encoding="utf-8") as f_json:
+                            forward_insight = json.load(f_json).get("forward_insight", "")
+                    except Exception:
+                        pass
 
             out.append({
                 "date":           date_str,

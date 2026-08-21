@@ -942,6 +942,7 @@ def run_daily_pipeline(date=None, print_report=True):
                 implication    = "",
                 regime_context = regime.get("overall_regime", ""),
                 full_insight   = daily_insight or "",
+                forward_insight = forward_insight or "",
                 regime_label   = regime.get("overall_regime", ""),
                 regime_score   = int(regime.get('legacy_score', int(round(float(regime.get('regime_score', 0)) * 10)))),
                 nifty_return   = float(contrib.get("nifty_actual_return_pct", 0.0)),
