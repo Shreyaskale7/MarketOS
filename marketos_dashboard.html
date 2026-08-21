@@ -491,8 +491,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div><div style="font-family:var(--mono);font-size:13px;font-weight:700">Walk-Forward Backtest</div><div style="font-size:11px;color:var(--text3)" id="bt-sub">—</div></div>
         <div class="tabs" style="margin-bottom:0">
-          <button class="tab on" onclick="loadBt(3,this)">3Y</button>
+          <button class="tab" onclick="loadBt(3,this)">3Y</button>
           <button class="tab" onclick="loadBt(5,this)">5Y</button>
+          <button class="tab on" onclick="loadBt(10,this)">10Y</button>
         </div>
       </div>
       <div class="bt-grid">
@@ -506,7 +507,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
         <div class="bm"><div class="bm-l">Total Friction Drag</div><div class="bm-v r" id="bt-cost-total">—</div></div>
       </div>
       <div class="g2">
-        <div class="card span2"><div class="card-title">Equity Curve — Portfolio vs NIFTY</div><div class="ch-lg"><canvas id="ch-equity"></canvas></div></div>
+        <div class="card span2"><div class="card-title">Equity Curve — Portfolio vs NIFTY</div><div class="ch-lg"><canvas id="ch-equity"></canvas></div><div id="bt-caveat" style="margin-top:10px"></div></div>
         <div class="card"><div class="card-title">Target Status</div><div id="bt-targets"><div class="empty">Loading...</div></div></div>
         <div class="card"><div class="card-title">Period Alpha Distribution</div><div class="ch"><canvas id="ch-periods"></canvas></div></div>
         <div class="card span2">
@@ -564,7 +565,11 @@ const API = window.location.origin;
 const _ch = {};
 let _fcData = [];
 let _portH  = '3M';
-let _btYrs  = 3;
+// Default to the 10-year window: it is the only lookback with a meaningful
+// sample (n=35 quarterly periods). The 3yr and 5yr views are kept because
+// hiding them would be cherry-picking, but they have n=7-14 and the result
+// is not stable across windows -- see the caveat rendered under the chart.
+let _btYrs  = 10;
 
 let _token = localStorage.getItem('marketos_token');
 let _user = null;
@@ -1262,7 +1267,15 @@ async function loadBt(yrs,btn){
   try{
     const d=await fetchAPI(`/api/backtest?years=${yrs}`);
     const bt=d.backtest||{}, m=bt.metrics||{};
-    document.getElementById('bt-sub').textContent=`${yrs}-year · ${bt.actual_rebalances||bt.n_periods||'—'} periods · 0.75% institutional friction modeled`;
+    // Show the ACTUAL measured friction, not a hardcoded "0.75%" claim --
+    // the real modelled cost at quarterly rebalancing is ~1.7%/yr, and
+    // stating a lower number than the engine actually charges would
+    // overstate the strategy.
+    const _n = bt.n_periods || bt.actual_rebalances || '—';
+    const _cd = m.cost_drag_annual_pct;
+    document.getElementById('bt-sub').textContent =
+      `${yrs}-year · ${_n} quarterly periods · ${_cd!=null?_cd.toFixed(2)+'%/yr':'—'} modelled friction`
+      + (typeof _n === 'number' && _n < 20 ? '  ⚠ small sample — treat as indicative only' : '');
     const pr=m.portfolio_annualised_return_pct,nr=m.nifty_annualised_return_pct,al=m.net_alpha_pct,sh=m.sharpe_ratio,dd=m.max_drawdown_pct,ir=m.information_ratio;
     document.getElementById('bt-ret').textContent   =pr!=null?pct(pr,2,true):'—';
     document.getElementById('bt-nifty').textContent =nr!=null?pct(nr,2,true):'—';
@@ -1298,6 +1311,26 @@ async function loadBt(yrs,btn){
         options:{...CX,scales:{x:CX.scales.x,y:{...CX.scales.y,ticks:{...CX.scales.y.ticks,callback:v=>(v*100-100).toFixed(0)+'%'}}}}
       });
     }
+
+    // Window-stability caveat, rendered next to the number rather than
+    // buried in docs. The same strategy config gives +4.33% alpha at 5yr
+    // but -2.33% at 8yr -- a signal that changes sign with the start date
+    // is weak, and anyone reading the headline figure deserves to see that
+    // in the same glance.
+    const _cav = document.getElementById('bt-caveat');
+    if (_cav) {
+      _cav.innerHTML =
+        `<div style="font-size:11px;color:var(--text3);line-height:1.6;padding:10px 12px;`
+        + `border-left:2px solid var(--y,#E8B84B);background:rgba(232,184,75,.05);border-radius:4px">`
+        + `<b style="color:var(--y,#E8B84B)">Read with this:</b> results are <b>not stable across lookback windows</b>. `
+        + `An 8-year window on this same config measured <b>&minus;2.33%</b> alpha, and reruns of the `
+        + `identical 10-year config have measured anywhere from <b>+3.0%</b> to <b>+4.6%</b>. `
+        + `Read the headline as <i>roughly +3 to +5%</i>, not a precise figure. `
+        + `The 10yr view is the most defensible because it has the most observations (n=35), not because it is the highest. `
+        + `This backtest also exercises the trailing-Sharpe selection heuristic, <b>not</b> the ML forecast engine.`
+        + `</div>`;
+    }
+
     const prs=bt.period_returns||[];
     if(prs.length){
       const alphas=prs.map(p=>p.alpha||p.port_alpha||0);
@@ -1345,6 +1378,20 @@ async function loadPerformance(){
     document.getElementById('pf-n').textContent   =ov.n_forecasts||'—';
     document.getElementById('pf-bias').textContent=ov.bias_pct!=null?pct(ov.bias_pct,3,true):'—';
     document.getElementById('pf-bias-s').textContent=ov.bias_pct>0?'over-predicting':'under-predicting';
+    // Explicit empty state. /api/performance legitimately returns
+    // status:"no_data" until forecasts mature (~30+ days after they are
+    // generated), and the panels were sitting on their static "Loading..."
+    // placeholder forever, which reads as a broken page rather than a
+    // correct "nothing to score yet".
+    if (pf.status === 'no_data' || !Object.keys(pf.by_sector || {}).length) {
+      const msg = pf.message || 'No matured forecasts yet — accuracy appears once forecast target dates pass.';
+      document.getElementById('pf-sectors').innerHTML = `<div class="empty">${msg}</div>`;
+      const _b = document.getElementById('pf-bench');
+      if (_b && !(pf.nifty_benchmark && Object.keys(pf.nifty_benchmark).length)) {
+        _b.innerHTML = `<div class="empty">${msg}</div>`;
+      }
+      if (pf.status === 'no_data') return;
+    }
     const secs=Object.entries(pf.by_sector||{}).sort((a,b)=>b[1].hit_ratio_pct-a[1].hit_ratio_pct);
     document.getElementById('pf-sectors').innerHTML=secs.map(([s,m])=>`
       <div class="perf-row"><div style="font-size:12px">${s}</div><span style="font-family:var(--mono);text-align:right;${cs(m.hit_ratio_pct-50)}">${pct(m.hit_ratio_pct,1)}</span><span style="font-family:var(--mono);text-align:right;color:var(--text2)">${pct(m.mae_pct,2)}</span><span style="font-family:var(--mono);text-align:right;color:var(--text3)">${m.n_forecasts}</span><div><span class="grade ${m.grade}">${m.grade}</span></div></div>`).join('');

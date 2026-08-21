@@ -32,16 +32,24 @@ warnings.filterwarnings("ignore")
 # estimate is materially less noisy than a 126-day one. Friction fell from
 # 3.95% -> 1.68%/yr as a direct result.
 #
-# MEASURED at these settings (10yr window, n=35 quarterly periods):
-#   portfolio 15.14%/yr | NIFTY 12.14%/yr | alpha +3.00% | Sharpe 0.669
-#   IR 0.205 | maxDD -12.73% | win 62.9% | cost 1.68%/yr
+# MEASURED at these settings, currently cached and served to the dashboard:
+#   10yr  n=35  alpha +4.59%  Sharpe 0.696
+#    5yr  n=15  alpha +5.14%  Sharpe 0.705
+#    3yr  n= 7  alpha +4.19%  Sharpe -0.475   <- negative Sharpe, tiny sample
 #
-# HONEST CAVEAT, do not omit when quoting the above: the result is NOT
-# stable across lookback windows. Same config gives +4.33% alpha at 5yr
-# (n=14) but -2.33% at 8yr (n=27). A signal that flips sign depending on
-# where you start the window is weak, and the 10yr number is the most
-# defensible only because it has the largest sample -- not because it is
-# the most flattering. Quote +3.00% with n=35, never the 5yr +4.33%.
+# THREE CAVEATS, none of which should be dropped when quoting the above:
+#
+# 1. NOT STABLE ACROSS WINDOWS. An 8yr window on this same config measured
+#    -2.33% alpha (n=27). A signal that changes sign with the start date is
+#    weak. The 10yr figure is the most defensible because it has the largest
+#    sample, NOT because it is the highest.
+# 2. NOT STABLE ACROSS RUNS. Two runs of the identical config measured 10yr
+#    alpha at +3.00% and +4.59% (Sharpe 0.669 vs 0.696). A ~1.5pp spread on
+#    a rerun is the honest error bar on any single number here; quote it as
+#    "roughly +3 to +5%", not "+4.59%".
+# 3. This backtest exercises the trailing-Sharpe selection heuristic in
+#    _backtest_weights(), NOT the ML forecast engine. It is evidence for the
+#    portfolio-construction logic only.
 REBALANCE_FREQ_DAYS  = 63       # quarterly (~63 trading days)
 FORWARD_WINDOW_DAYS  = 63
 TRAIN_WINDOW_DAYS    = 252      # 12 months training window
