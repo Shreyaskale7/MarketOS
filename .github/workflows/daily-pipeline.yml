@@ -45,6 +45,39 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Sanity-check secrets are actually set
+        # GitHub masks secret VALUES in logs as "***", which is exactly why
+        # "Could not parse SQLAlchemy URL from string '***'" tells you
+        # nothing about what's actually wrong. This prints only shape
+        # (length, prefix, whitespace) -- never the value itself -- so a
+        # blank/placeholder/quoted secret is diagnosable without exposing
+        # a real credential in the log.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python -c "
+          import os
+          # Report FACTS only -- never a substring of the value, because
+          # GitHub's log-masking matches on literal substrings and a real
+          # prefix would just print as another '***', telling us nothing.
+          def check(name, looks_like=None):
+              v = os.environ.get(name, '')
+              print(f'{name}:')
+              print(f'  is_empty            = {v == \"\"}')
+              print(f'  length               = {len(v)}')
+              print(f'  wrapped_in_quotes    = {(v.startswith(chr(34)) and v.endswith(chr(34))) or (v.startswith(chr(39)) and v.endswith(chr(39)))}')
+              print(f'  has_leading_space    = {v != v.lstrip()}')
+              print(f'  has_trailing_space   = {v != v.rstrip()}')
+              print(f'  contains_newline     = {chr(10) in v}')
+              if looks_like:
+                  print(f'  matches_expected_shape = {looks_like(v)}')
+          check('DATABASE_URL', lambda v: v.lower().startswith(('postgres://', 'postgresql://', 'sqlite:///')))
+          check('GROQ_API_KEY', lambda v: v.startswith('gsk_'))
+          check('GEMINI_API_KEY', lambda v: v.startswith('AIza'))
+          "
+
       - name: Run daily pipeline
         env:
           DATABASE_URL:   ${{ secrets.DATABASE_URL }}
