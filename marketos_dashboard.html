@@ -591,6 +591,13 @@ async function fetchAPI(endpoint, options = {}) {
     doLogout();
     return null; // Unauthorized
   }
+  // A 429 previously fell through to response.json(), threw on the
+  // non-JSON body, and every panel rendered "run pipeline first" -- which
+  // pointed the user at completely the wrong problem. Surface it honestly.
+  if (response.status === 429) {
+    console.warn('Rate limited (429) — backing off.');
+    throw new Error('RATE_LIMITED');
+  }
   return response.json();
 }
 
@@ -739,7 +746,10 @@ async function initAuth() {
 function initApp() {
   checkRiskProfile();
   getStatus();
-  setInterval(getStatus, 10000); // 10s poll
+  // 60s, not 10s. At 10s this alone was 360 requests/hour per open tab --
+  // pointless for data that only changes once a trading day, and it was
+  // burning the API rate budget purely on idle browser tabs.
+  setInterval(getStatus, 60000);
   go('overview');
 }
 

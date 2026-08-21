@@ -68,7 +68,23 @@ logging.basicConfig(level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO")),
 try:
     from flask_limiter import Limiter
     from flask_limiter.util import get_remote_address
-    limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
+    # The old default of "50 per hour / 200 per day" was far below what a
+    # single legitimate dashboard session generates. The UI polls
+    # /api/status every 10s (360 req/hour on its own) and each tab switch
+    # fires another 2-5 calls -- so one user exhausted the hourly budget in
+    # ~8 minutes and the daily budget in ~33, after which EVERY endpoint
+    # returned 429 and every panel fell into its catch block showing
+    # "run pipeline first". That was the dominant cause of the dashboard
+    # "working once and then breaking".
+    #
+    # Read-only GETs are cheap now (alpha and portfolio are cached), so the
+    # global ceiling is generous and exists only to stop genuine abuse.
+    # Rate limiting is applied narrowly, below, where it actually protects
+    # something: credential endpoints (brute force) and job triggers.
+    limiter = Limiter(
+        get_remote_address, app=app,
+        default_limits=["3000 per hour", "20000 per day"],
+    )
 except ImportError:
     class DummyLimiter:
         def limit(self, *args, **kwargs):
@@ -251,6 +267,7 @@ _job_status = {"running": False, "job": None, "started_at": None, "result": None
 # ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/auth/register", methods=["POST"])
+@limiter.limit("10 per hour")   # account-creation abuse
 def auth_register():
     try:
         data = request.json
@@ -287,6 +304,7 @@ def auth_register():
         return error(str(e))
 
 @app.route("/api/auth/login", methods=["POST"])
+@limiter.limit("20 per hour")   # credential brute-force
 def auth_login():
     try:
         data = request.json
@@ -1518,6 +1536,7 @@ def macro_history():
 
 
 @app.route("/api/run/fetch", methods=["POST"])
+@limiter.limit("6 per hour")    # expensive job trigger
 def run_fetch():
     if _job_status["running"]:
         return error("A job is already running. Please wait.", 409)
@@ -1531,6 +1550,7 @@ def run_fetch():
 
 
 @app.route("/api/run/daily", methods=["POST"])
+@limiter.limit("6 per hour")    # expensive job trigger
 def run_daily():
     if _job_status["running"]:
         return error("A job is already running. Please wait.", 409)
