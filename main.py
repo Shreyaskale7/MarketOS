@@ -103,6 +103,19 @@ def build_anti_hallucination_prefix(moderated_output):
     macro = moderated_output.get('macro_data', {})
     regime = moderated_output.get('macro_regime', {})
 
+    # BUG FIX: the NIFTY return itself — arguably the single most important
+    # fact for a daily market insight — was never included in this prefix,
+    # even though moderated_output carries it at the top level. That meant
+    # the LLM path had no verified NIFTY figure to ground its narrative on,
+    # and the no-API _structured_fallback()'s regex was searching prompt
+    # text for a number that was never actually injected into the prompt,
+    # producing "NIFTY 50 gained N/A% today" even when the real return was
+    # sitting right there in moderated_output the whole time.
+    nifty_ret_pct = moderated_output.get('nifty_actual_return_pct')
+    nifty_ret_pct = 0.0 if nifty_ret_pct is None else nifty_ret_pct
+    nifty_level   = moderated_output.get('nifty_level', 0) or 0
+    nifty_dir     = "gained" if nifty_ret_pct >= 0 else "declined"
+
     crude_val    = macro.get('brent_crude', {}).get('current', 0)
     crude_chg    = macro.get('brent_crude', {}).get('change_pct', 0)
     usdinr_val   = macro.get('usdinr', {}).get('current', 0)
@@ -126,6 +139,7 @@ Use ONLY the verified facts below. DO NOT contradict them.
 DO NOT invent data. DO NOT say crude is falling if it is spiking.
 
 VERIFIED MACRO FACTS FOR TODAY:
+- NIFTY 50: {nifty_level:,.2f} | Return: {nifty_ret_pct:+.4f}% (index {nifty_dir} today)
 - Brent Crude: ${crude_val:.1f}/bbl | Direction: {crude_dir} ({crude_chg:+.1f}%)
 - USD/INR: ₹{usdinr_val:.2f} | Rupee: {rupee_dir} ({usdinr_chg:+.2f}%)
 - India VIX: {vix_val:.1f} | Volatility: {vix_label}
@@ -368,10 +382,19 @@ def _structured_fallback(prompt):
     """
     import re
 
-    # Extract key numbers from the prompt
-    nifty_match  = re.search(r"NIFTY 50.*?([+-]?\d+\.\d+)%", prompt)
-    regime_match = re.search(r"Overall: (\w+)", prompt)
-    score_match  = re.search(r"Regime Score: ([+-]?\d+)", prompt)
+    # Extract key numbers from the prompt.
+    # Matches the "NIFTY 50: 24,395.85 | Return: -0.1641% (index declined
+    # today)" line injected by build_anti_hallucination_prefix() — the
+    # previous pattern searched for text that was never actually in the
+    # prompt (NIFTY was missing from the prefix entirely), which is why
+    # this always fell through to "N/A".
+    nifty_match  = re.search(r"NIFTY 50:.*?Return:\s*([+-]?\d+\.\d+)%", prompt)
+    # FIX: this was searching for "Overall: X" / "Regime Score: N", which
+    # never appears anywhere in build_anti_hallucination_prefix()'s actual
+    # text ("Macro Regime: NEUTRAL (score: +0/10)") — always fell through
+    # to "Unknown" / "0", same class of bug as the NIFTY one above.
+    regime_match = re.search(r"Macro Regime:\s*(\w+)", prompt)
+    score_match  = re.search(r"\(score:\s*([+-]?\d+)/10\)", prompt)
     vix_match    = re.search(r"India VIX.*?(\d+\.\d+)", prompt)
     crude_match  = re.search(r"Brent Crude.*?\$(\d+\.?\d*)", prompt)
 
