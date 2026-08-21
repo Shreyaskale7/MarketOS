@@ -290,7 +290,11 @@ def _call_groq(prompt):
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "llama-3.1-8b-instant",
+        # See sentiment_engine.GROQ_MODEL for the full note: the previous
+        # hardcoded "llama-3.1-8b-instant" was retired by Groq and returned
+        # 404 on every call, silently forcing every daily insight down the
+        # no-API _structured_fallback() path. Overridable via GROQ_MODEL.
+        "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         "messages": [
             {
                 "role": "system",

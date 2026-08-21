@@ -13,6 +13,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Groq model, overridable by env so a provider deprecation is a config
+# change, not a code change + redeploy.
+#
+# HISTORY: this was hardcoded to "llama-3.1-8b-instant", which Groq has
+# since retired -- every request returned HTTP 404 model_not_found, which
+# surfaced to users only as the generic "Error analyzing sentiment." Groq
+# rotates its catalogue regularly; verify with
+#   curl -H "Authorization: Bearer $GROQ_API_KEY" \
+#        https://api.groq.com/openai/v1/models
+# and set GROQ_MODEL in the environment rather than editing this default.
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
 # We map each sector to heavyweight proxies for news fetching
 SECTOR_PROXIES = {
     "Banking & Financial Services": ["HDFCBANK.NS", "SBIN.NS"],
@@ -84,19 +96,34 @@ def analyze_sentiment_groq(sector, headlines):
                 "Content-Type": "application/json"
             }
             data = {
-                "model": "llama-3.1-8b-instant",
+                "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
                 "response_format": {"type": "json_object"}
             }
-            
+
             response = requests.post(url, headers=headers, json=data, timeout=10)
             if response.status_code == 429:
                 print(f"Rate limited on attempt {attempt+1}. Retrying...")
                 time.sleep(base_delay * (2 ** attempt))
                 continue
+
+            # FAIL FAST on permanent errors. Retrying a 404 (model retired)
+            # or 401 (bad key) can never succeed, and the old code retried
+            # both with a 2s backoff -- across 7 sectors that turned one
+            # config mistake into a ~32s hang that blocked /api/alpha and
+            # /api/portfolio, which is what made the whole dashboard look
+            # broken rather than just the sentiment panel.
+            if response.status_code in (400, 401, 403, 404):
+                print(f"  [Sentiment] PERMANENT ERROR {response.status_code} for model "
+                      f"'{GROQ_MODEL}': {response.text[:200]}")
+                print(f"  [Sentiment] Not retrying. Set GROQ_MODEL to a currently-available "
+                      f"model (list them: GET https://api.groq.com/openai/v1/models).")
+                return {"sentiment_score": 0.0, "bullish_bearish_label": "NEUTRAL",
+                        "rationale": f"Sentiment unavailable (model error {response.status_code})."}
+
             response.raise_for_status()
-            
+
             content = response.json()["choices"][0]["message"]["content"]
             result = json.loads(content)
             
