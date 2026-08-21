@@ -1286,11 +1286,21 @@ async function loadBt(yrs,btn){
     // the real modelled cost at quarterly rebalancing is ~1.7%/yr, and
     // stating a lower number than the engine actually charges would
     // overstate the strategy.
-    const _n = bt.n_periods || bt.actual_rebalances || '—';
-    const _cd = m.cost_drag_annual_pct;
+    const _n   = bt.n_periods || bt.actual_rebalances || '—';
+    const _cd  = m.cost_drag_annual_pct;
+    const _reb = bt.actual_rebalances;
+    const _skp = bt.skipped_rebalances;
+    const _rbd = bt.rebalance_days;
+    // Surface the rebalancing detail explicitly. "How often did it actually
+    // trade, and how often did the turnover filter suppress a trade?" is the
+    // question that decides whether the cost drag is defensible, so it
+    // belongs on screen next to that cost number.
     document.getElementById('bt-sub').textContent =
-      `${yrs}-year · ${_n} quarterly periods · ${_cd!=null?_cd.toFixed(2)+'%/yr':'—'} modelled friction`
-      + (typeof _n === 'number' && _n < 20 ? '  ⚠ small sample — treat as indicative only' : '');
+      `${yrs}-year · ${_n} periods`
+      + (_rbd ? ` · rebalanced every ${_rbd}d` : '')
+      + (_reb != null ? ` · ${_reb} trades executed${_skp != null ? `, ${_skp} skipped by turnover filter` : ''}` : '')
+      + ` · ${_cd != null ? _cd.toFixed(2) + '%/yr' : '—'} modelled friction`
+      + (typeof _n === 'number' && _n < 20 ? '  ⚠ small sample — indicative only' : '');
     const pr=m.portfolio_annualised_return_pct,nr=m.nifty_annualised_return_pct,al=m.net_alpha_pct,sh=m.sharpe_ratio,dd=m.max_drawdown_pct,ir=m.information_ratio;
     document.getElementById('bt-ret').textContent   =pr!=null?pct(pr,2,true):'—';
     document.getElementById('bt-nifty').textContent =nr!=null?pct(nr,2,true):'—';
