@@ -32,10 +32,18 @@ warnings.filterwarnings("ignore")
 # estimate is materially less noisy than a 126-day one. Friction fell from
 # 3.95% -> 1.68%/yr as a direct result.
 #
-# MEASURED at these settings, currently cached and served to the dashboard:
-#   10yr  n=35  alpha +4.59%  Sharpe 0.696
-#    5yr  n=15  alpha +5.14%  Sharpe 0.705
-#    3yr  n= 7  alpha +4.19%  Sharpe -0.475   <- negative Sharpe, tiny sample
+# MEASURED on the PRODUCTION Postgres data (re-seeded after the Tata Motors
+# ticker fix, so this is the authoritative dataset -- local SQLite still
+# carries the old duplicated-ticker history and reads ~4pp more optimistic):
+#    5yr  n=15  alpha +5.93%  Sharpe 0.892  IR 0.653
+#   10yr  n=35  alpha +0.02%  Sharpe 0.375  IR 0.021   <- ZERO edge
+#
+# Read that 10yr row carefully before quoting anything from this engine.
+# Over the longest window and the largest sample, the strategy returned
+# 11.89% against NIFTY's 11.87% -- i.e. it matched the index and produced
+# no measurable alpha at all. The 5yr window looks strong, but a strategy
+# whose edge vanishes as you add data is the classic signature of a result
+# driven by a favourable sub-period rather than a durable effect.
 #
 # THREE CAVEATS, none of which should be dropped when quoting the above:
 #
@@ -503,6 +511,21 @@ def _get_macro_snapshot_for_date(target_date) -> dict:
             return (curr - prev_val) / prev_val * 100
 
         return {
+            # NIFTY block is REQUIRED by classify_macro_regime(): it reads
+            # nifty_actual_return_pct / nifty_return and, finding neither,
+            # hits its "zero/missing return" guard and returns NEUTRAL
+            # immediately. Omitting it meant EVERY historical rebalance
+            # classified as NEUTRAL -- which is why a backtest run printed
+            # one "NIFTY return = None - forcing NEUTRAL" warning per
+            # rebalance date, and why the regime half of the hedging rule
+            # below (STRONGLY_BEARISH / BEARISH) was unreachable dead code.
+            # Hedging was effectively VIX-threshold-only.
+            "nifty": {
+                "current":    float(row.nifty_close or 0.0),
+                "change_pct": float(row.nifty_return or 0.0),
+                "is_valid":   bool(row.nifty_close),
+            },
+            "nifty_actual_return_pct": float(row.nifty_return or 0.0),
             "india_vix": {
                 "current": float(row.india_vix or 15.0),
                 "change_pct": pct_change(row.india_vix or 15.0, prev.india_vix or 15.0)
