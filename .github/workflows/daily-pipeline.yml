@@ -1,0 +1,81 @@
+name: Daily MarketOS Pipeline
+
+# Runs the full pipeline after the NSE close and writes results straight
+# into the production Postgres.
+#
+# WHY GITHUB ACTIONS RATHER THAN THE OBVIOUS ALTERNATIVES
+#   - Render free web service: 512MB RAM and it sleeps. The pipeline OOM'd
+#     there; that is exactly why /api/backtest had to become cache-only.
+#   - APScheduler inside the app: never fires, because the free instance is
+#     asleep at 16:00 IST.
+#   - cron-job.org hitting /api/run/daily: same 512MB ceiling, same failure.
+#   - Your laptop + Task Scheduler: works, but only while it is powered on.
+#
+#   A GitHub-hosted runner has ~16GB RAM and no sleep behaviour, and a
+#   ~10 minute daily job costs ~300 of the 2,000 free minutes/month on a
+#   private repo (unlimited on a public one).
+
+on:
+  schedule:
+    # 16:15 IST = 10:45 UTC. Fifteen minutes after the 15:30 IST close, to
+    # let Yahoo settle the day's final prices. Mon-Fri only.
+    # NOTE: GitHub's scheduler is best-effort and can be delayed under load;
+    # it is not a hard real-time guarantee.
+    - cron: '45 10 * * 1-5'
+  workflow_dispatch:        # allows a manual run from the Actions tab
+
+concurrency:
+  # Never let two pipeline runs write to the same database at once.
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily pipeline
+        env:
+          DATABASE_URL:   ${{ secrets.DATABASE_URL }}
+          GROQ_API_KEY:   ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # The pipeline is the one place that SHOULD wait for real
+          # sentiment, since whatever it computes gets persisted.
+          SENTIMENT_BLOCKING: 'true'
+        run: python main.py --daily
+
+      - name: Score matured forecasts
+        # Closes the prediction -> outcome loop. Without this the accuracy
+        # panel never fills, because nothing ever grades a forecast once its
+        # target date passes.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -c "
+          from feedback_evaluator import evaluate_forecast_accuracy
+          evaluate_forecast_accuracy()
+          " || echo 'Accuracy scoring skipped (non-fatal).'
+
+      - name: Refresh backtest cache
+        # Runs daily so the 5Y/10Y windows always include the newest data.
+        # Serving these from cache is what keeps /api/backtest alive at all
+        # on the free Render instance, which cannot compute one in-request.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python populate_backtest_cache.py || echo 'Backtest refresh skipped (non-fatal).'
+
+      - name: Warm the Render instance
+        # Free instances sleep; a post-run ping means the first human visitor
+        # does not eat the ~50s cold start.
+        run: curl -s -o /dev/null -w 'warm ping: %{http_code}\n' https://marketos-api.onrender.com/api/healthcheck || true

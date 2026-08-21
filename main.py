@@ -245,7 +245,7 @@ def _apply_insight_realism(text: str) -> str:
     return text
 
 
-def generate_ai_insight(prompt, language="english", moderated_output=None):
+def generate_ai_insight(prompt, language="english", moderated_output=None, kind="daily"):
     """
     Generates AI market insight.
     Tries Groq first, falls back to Gemini, then returns structured fallback.
@@ -278,7 +278,12 @@ def generate_ai_insight(prompt, language="english", moderated_output=None):
         print(f"  Gemini failed: {result}")
 
     # ── Structured fallback — no API needed ───────────────────────
-    return _structured_fallback(prompt)
+    # Route to the matching no-API template. Both panels previously shared
+    # _structured_fallback(), so whenever the LLM was unavailable the daily
+    # and forward cards rendered WORD-FOR-WORD identical text -- which looks
+    # like a rendering bug and wastes half the screen.
+    return (_forward_structured_fallback(prompt) if kind == "forward"
+            else _structured_fallback(prompt))
 
 
 def _call_groq(prompt):
@@ -424,6 +429,61 @@ Overall macro environment is {regime}. Maintain awareness of crude oil prices an
 
 DISCLAIMER: This is educational market analysis only. Not investment advice.
 Add GROQ_API_KEY (free at console.groq.com) for AI-generated insights."""
+
+
+def _forward_structured_fallback(prompt):
+    """
+    No-API template for the FORWARD panel.
+
+    Deliberately different in structure and content from
+    _structured_fallback(): that one is backward-looking (what happened
+    today and why), this one is forward-looking (which subsectors screen
+    best, what would have to go right or wrong, what to watch). Sharing one
+    template made the two dashboard cards render identical text whenever
+    the LLM was unavailable.
+    """
+    import re
+
+    regime  = (re.search(r"Macro Regime:\s*(\w+)", prompt) or [None, "Unknown"])[1].replace("_", " ")
+    vix     = (re.search(r"India VIX:\s*(\d+\.?\d*)", prompt) or [None, None])[1]
+    crude   = (re.search(r"Brent Crude:\s*\$(\d+\.?\d*)", prompt) or [None, None])[1]
+    rupee   = (re.search(r"Rupee:\s*(\w+)", prompt) or [None, "STABLE"])[1]
+    crude_d = (re.search(r"Direction:\s*(\w+)", prompt) or [None, "STABLE"])[1]
+
+    # Pull the ranked opportunities the forward engine put in the prompt.
+    opps = re.findall(r"^\s*\d+\.\s*([A-Za-z&/ ,\-]+?)\s*[|:]\s*([+-]?\d+\.?\d*)%", prompt, re.M)[:5]
+    if opps:
+        opp_lines = "\n".join(
+            f"- {name.strip()}: modelled {val}% relative to NIFTY over the horizon"
+            for name, val in opps
+        )
+    else:
+        opp_lines = "- Ranked opportunities unavailable in this run."
+
+    vix_txt = (f"India VIX at {vix}" if vix else "India VIX")
+    vix_read = ("leaves little cushion — positioning is priced for calm, so any shock repriced quickly"
+                if vix and float(vix) < 13 else
+                "signals elevated hedging demand — size positions accordingly"
+                if vix and float(vix) > 20 else
+                "sits in a neutral band")
+
+    return f"""WHAT TO WATCH NEXT:
+{opp_lines}
+
+WHY THESE SCREEN WELL:
+The ranking blends modelled forward return, model confidence and the composite alpha score, then divides by realised volatility — so a subsector rises here by being both favoured AND steady, not merely by having the loudest forecast.
+
+MACRO TRIGGERS THAT WOULD CHANGE THIS:
+- Crude ({f'${crude}/bbl' if crude else 'current level'}, {crude_d}): a sustained move above $95 pressures OMC margins and the import bill; a fall below $80 does the reverse.
+- Rupee ({rupee}): sustained weakness supports IT and Pharma exporters and hurts import-heavy Energy and Autos.
+- Volatility: {vix_txt} {vix_read}.
+- Regime is {regime}: a flip to BEARISH tightens the sector cap from 20% to 15% and can trigger the index hedge.
+
+HOW TO READ THIS:
+These are model rankings, not recommendations. Forecast magnitudes have historically run optimistic versus realised outcomes, so treat the ORDER as the signal and the LEVEL as indicative.
+
+DISCLAIMER: Educational market analysis only. Not investment advice.
+Add GROQ_API_KEY (free at console.groq.com) for a fuller AI-written outlook."""
 
 
 def save_output(output, date_str, label="daily"):
@@ -746,12 +806,42 @@ def run_daily_pipeline(date=None, print_report=True):
         # with a score of 0/10" and "$N/A/barrel" while the daily panel,
         # which does get the prefix, was correct. Sharing the prefix fixes
         # the fallback and gives the model the same grounded numbers.
+        # Feed the LLM the actual news the sentiment engine already fetched,
+        # so the forward narrative can cite what the market is reacting to
+        # rather than only describing model output. Cached (12h TTL), so
+        # this costs no extra network calls.
+        _news_block = ""
+        try:
+            from sentiment_engine import get_live_sentiment_all_sectors, fetch_headlines
+            _sent = get_live_sentiment_all_sectors(blocking=True) or {}
+            _lines = []
+            for _sec, _d in list(_sent.items())[:7]:
+                _sc = _d.get("sentiment_score", 0.0)
+                _ra = (_d.get("rationale") or "").strip()
+                if _ra and "unavailable" not in _ra.lower() and "error" not in _ra.lower():
+                    _lines.append(f"- {_sec}: sentiment {_sc:+.2f} — {_ra}")
+            # A few raw headlines give the model something concrete to name.
+            for _sec in list(_sent.keys())[:3]:
+                for _h in (fetch_headlines(_sec) or [])[:3]:
+                    _lines.append(f"- HEADLINE ({_sec}): {_h}")
+            if _lines:
+                _news_block = ("\n\nCURRENT SECTOR NEWS AND SENTIMENT (cite specifics from here):\n"
+                               + "\n".join(_lines) + "\n")
+        except Exception as _ne:
+            print(f"  News block for forward insight skipped: {_ne}")
+
         fwd_prompt     = (
             build_anti_hallucination_prefix(moderated)
+            + _news_block
             + "\n\n"
             + build_opportunity_prompt(opportunities, comparison, regime, macro_data)
+            + "\n\nWrite a FORWARD-LOOKING outlook. Do NOT recap today's move — the "
+              "adjacent panel already does that. Cover: which subsectors screen best "
+              "and why, what the news above implies for them, which macro triggers "
+              "would invalidate the view, and what to watch next. Be specific and "
+              "cite the numbers and headlines given."
         )
-        forward_insight = generate_ai_insight(fwd_prompt)
+        forward_insight = generate_ai_insight(fwd_prompt, kind="forward")
 
     except Exception as e:
         print(f"  Forward engine skipped: {e}")
