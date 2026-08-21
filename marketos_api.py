@@ -1159,7 +1159,34 @@ def backtest():
         force = request.args.get("force", "false").lower() == "true"
 
         from backtest_engine import run_backtest
-        results = run_backtest(lookback_years=years, force_recompute=force)
+        # Serve ONLY from cache by default. Computing a backtest inside a
+        # web request loads years of price history and simulates 15-35
+        # rebalances; on a 512MB instance that killed the worker outright --
+        # years=5 and years=10 returned an EMPTY response (no JSON, no
+        # error), which the dashboard could only render as a stuck panel.
+        # Populate the cache out-of-band with populate_backtest_cache.py.
+        # ?force=true still allows an explicit recompute for local use.
+        if not force:
+            from backtest_engine import _load_cached_backtest
+            results = _load_cached_backtest(years)
+            if results is None:
+                return success({
+                    "backtest": {
+                        "status": "not_cached",
+                        "message": (
+                            f"No cached {years}-year backtest. Backtests are "
+                            f"pre-computed out-of-band because running one "
+                            f"inside a request exceeds this instance's memory "
+                            f"budget. Run: python populate_backtest_cache.py "
+                            f"with DATABASE_URL pointed at this database."
+                        ),
+                        "metrics": {},
+                        "equity_curve": [],
+                    },
+                    "years": years,
+                })
+        else:
+            results = run_backtest(lookback_years=years, force_recompute=True)
 
         def _clean(obj):
             if isinstance(obj, dict):

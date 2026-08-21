@@ -1267,6 +1267,21 @@ async function loadBt(yrs,btn){
   try{
     const d=await fetchAPI(`/api/backtest?years=${yrs}`);
     const bt=d.backtest||{}, m=bt.metrics||{};
+
+    // An uncached window must CLEAR the panel, not silently leave the
+    // previously-selected window's numbers on screen -- that made 3Y/5Y/10Y
+    // look identical and was actively misleading about which window the
+    // figures belonged to.
+    if (bt.status === 'not_cached' || !Object.keys(m).length) {
+      ['bt-ret','bt-nifty','bt-alpha','bt-sharpe','bt-dd','bt-ir','bt-cost-annual','bt-cost-total']
+        .forEach(id => { const el=document.getElementById(id); if(el){el.textContent='—'; el.className='bm-v';} });
+      document.getElementById('bt-sub').textContent = `${yrs}-year · not computed yet`;
+      const _t=document.getElementById('bt-targets'); if(_t) _t.innerHTML='';
+      destroyChart('equity'); destroyChart('periods');
+      const _c=document.getElementById('bt-caveat');
+      if(_c) _c.innerHTML=`<div class="empty">${bt.message||'No cached backtest for this window yet.'}</div>`;
+      return;
+    }
     // Show the ACTUAL measured friction, not a hardcoded "0.75%" claim --
     // the real modelled cost at quarterly rebalancing is ~1.7%/yr, and
     // stating a lower number than the engine actually charges would
