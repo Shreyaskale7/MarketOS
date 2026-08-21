@@ -738,8 +738,18 @@ def run_daily_pipeline(date=None, print_report=True):
         # ── Step 9: Forward AI insight ─────────────────────────────
         print("\n[9/9] Generating forward intelligence...")
         comparison     = get_sector_comparison_report()
-        fwd_prompt     = build_opportunity_prompt(
-            opportunities, comparison, regime, macro_data
+        # Prepend the SAME verified-facts prefix the daily insight uses.
+        # build_opportunity_prompt() alone does not contain the NIFTY level,
+        # regime label/score or crude price in the exact shape that both the
+        # LLM and _structured_fallback()'s regexes expect -- which is why the
+        # forward panel rendered "NIFTY 50 gained N/A%", "regime is Unknown
+        # with a score of 0/10" and "$N/A/barrel" while the daily panel,
+        # which does get the prefix, was correct. Sharing the prefix fixes
+        # the fallback and gives the model the same grounded numbers.
+        fwd_prompt     = (
+            build_anti_hallucination_prefix(moderated)
+            + "\n\n"
+            + build_opportunity_prompt(opportunities, comparison, regime, macro_data)
         )
         forward_insight = generate_ai_insight(fwd_prompt)
 
