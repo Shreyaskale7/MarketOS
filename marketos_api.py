@@ -754,6 +754,54 @@ def alpha_signals():
 # ROUTE 5 — PORTFOLIO ALLOCATION
 # ─────────────────────────────────────────────────────────────────
 
+def _load_stored_forecasts():
+    """
+    Rebuilds the nested {sector: {subsector: {horizon: {...}}}} structure
+    build_portfolio() expects, from the forward_forecasts rows the daily
+    pipeline already wrote. Returns None if nothing is stored, so callers
+    can fall back to live generation.
+
+    Note the column/key rename: the DB stores `base_case_return` while the
+    engine dicts use `base_case_return_pct` (likewise bull/bear).
+    """
+    from database import get_session, ForwardForecast
+    from sqlalchemy import func
+
+    session = get_session()
+    try:
+        latest = session.query(func.max(ForwardForecast.generated_date)).scalar()
+        if not latest:
+            return None
+        rows = session.query(ForwardForecast).filter(
+            ForwardForecast.generated_date == latest
+        ).all()
+    except Exception as exc:
+        print(f"  [portfolio] stored-forecast load failed, will regenerate: {exc}")
+        return None
+    finally:
+        session.close()
+
+    if not rows:
+        return None
+
+    out = {}
+    for r in rows:
+        out.setdefault(r.sector, {}).setdefault(r.subsector, {})[r.forecast_horizon] = {
+            "horizon":              r.forecast_horizon,
+            "target_date":          r.target_date,
+            "base_case_return_pct": r.base_case_return,
+            "bull_case_return_pct": r.bull_case_return,
+            "bear_case_return_pct": r.bear_case_return,
+            "confidence_score":     r.confidence_score,
+            "opportunity_score":    r.opportunity_score,
+            "primary_catalyst":     r.primary_catalyst,
+            "risk_factor":          r.risk_factor,
+            "source":               "stored",
+        }
+    print(f"  [portfolio] using {len(rows)} stored forecasts from {latest}")
+    return out
+
+
 _PORTFOLIO_CACHE = {}
 
 # FREE_TIER_HORIZONS previously gated non-1M horizons behind the pro plan.
@@ -804,7 +852,14 @@ def portfolio():
 
         macro   = fetch_live_macro_data()
         regime  = classify_macro_regime(macro)
-        fc      = generate_ml_forecasts(macro, regime)
+        # Prefer forecasts the daily pipeline already computed and stored.
+        # Regenerating them here meant loading all 105 model pickles (~185MB)
+        # and running 28 subsectors x 3 scenarios x 3 horizons of inference
+        # on every cache miss -- measured at ~32s per horizon, which is both
+        # why the Portfolio tab appeared broken (the browser gave up long
+        # before it answered) and a real OOM risk on a 512MB free instance.
+        # Falls back to live generation only if nothing is stored yet.
+        fc      = _load_stored_forecasts() or generate_ml_forecasts(macro, regime)
 
         # Build moderated_output for alpha (needed for portfolio)
         from database import get_session, SectorPerformance
