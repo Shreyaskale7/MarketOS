@@ -78,4 +78,6 @@ jobs:
       - name: Warm the Render instance
         # Free instances sleep; a post-run ping means the first human visitor
         # does not eat the ~50s cold start.
-        run: curl -s -o /dev/null -w 'warm ping: %{http_code}\n' https://marketos-api.onrender.com/api/healthcheck || true
+        run: |
+          curl -s -o /dev/null -w 'warm ping %{http_code}\n' \
+            https://marketos-api.onrender.com/api/healthcheck || true
