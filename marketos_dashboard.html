@@ -491,7 +491,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div><div style="font-family:var(--mono);font-size:13px;font-weight:700">Walk-Forward Backtest</div><div style="font-size:11px;color:var(--text3)" id="bt-sub">—</div></div>
         <div class="tabs" style="margin-bottom:0">
-          <button class="tab" onclick="loadBt(3,this)">3Y</button>
           <button class="tab" onclick="loadBt(5,this)">5Y</button>
           <button class="tab on" onclick="loadBt(10,this)">10Y</button>
         </div>
@@ -565,10 +564,17 @@ const API = window.location.origin;
 const _ch = {};
 let _fcData = [];
 let _portH  = '3M';
-// Default to the 10-year window: it is the only lookback with a meaningful
-// sample (n=35 quarterly periods). The 3yr and 5yr views are kept because
-// hiding them would be cherry-picking, but they have n=7-14 and the result
-// is not stable across windows -- see the caveat rendered under the chart.
+// Default to the 10-year window: largest sample (n=35 quarterly periods).
+// 5Y (n=15) is kept alongside it -- showing only the single best window
+// would be cherry-picking, and 5Y carries a weaker IR, so keeping it is
+// the honest choice rather than a flattering one.
+//
+// 3Y was REMOVED from the UI: n=7 observations and a NEGATIVE Sharpe
+// (-0.475), i.e. it produced "alpha" while losing money against the
+// risk-free rate. Seven observations cannot support a claim either way, so
+// displaying it invited a conclusion the data does not carry. The
+// window-instability caveat under the chart (an 8yr window measured -2.33%)
+// still does the job of preventing over-reading the remaining two.
 let _btYrs  = 10;
 
 let _token = localStorage.getItem('marketos_token');

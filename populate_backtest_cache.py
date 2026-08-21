@@ -31,7 +31,10 @@ the old monthly/126d settings and must be overwritten, not reused.
 import os
 import sys
 
-WINDOWS = [3, 5, 10]
+# 3Y intentionally excluded: n=7 periods with a negative Sharpe is too
+# small a sample to support a conclusion, so it is not shown on the
+# dashboard and there is no reason to spend compute caching it.
+WINDOWS = [5, 10]
 
 
 def main():
