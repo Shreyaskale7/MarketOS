@@ -52,3 +52,10 @@ desktop.ini
 
 # Jupyter notebooks (if any)
 .ipynb_checkpoints/
+
+# Generated deliverables — build from docs/bible/, not sources of truth
+*.pdf
+
+# Editor/scratch backup files
+*.bak
+scratch_*.py
