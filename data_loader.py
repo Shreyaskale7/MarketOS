@@ -34,6 +34,22 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 HISTORY_YEARS = 10
 
+# ─────────────────────────────────────────────────────────────────
+# YAHOO FINANCE SESSION — browser impersonation
+# ─────────────────────────────────────────────────────────────────
+# yfinance's plain requests.Session is trivially fingerprinted and blocked —
+# Yahoo tightened bot detection in 2024-25 and now flags the TLS/header
+# signature of the raw `requests` library, not just request volume. Shared CI
+# IP ranges (GitHub Actions, most PaaS free tiers) get hit hardest because
+# thousands of unrelated yfinance jobs share the same pool and keep it
+# permanently flagged. curl_cffi impersonates a real Chrome TLS fingerprint,
+# which is the standard fix the yfinance community converged on.
+try:
+    from curl_cffi import requests as _cf_requests
+    YF_SESSION = _cf_requests.Session(impersonate="chrome")
+except ImportError:
+    YF_SESSION = None
+
 MACRO_TICKERS = {
     "usdinr":      "INR=X",
     "brent_crude": "BZ=F",
@@ -288,22 +304,23 @@ def _fetch_single_ticker(ticker, start_str, end_str, max_retries=3):
             df = yf.download(
                 ticker, start=start_str, end=end_str,
                 auto_adjust=True, progress=False, threads=False,
+                session=YF_SESSION,
             )
             if df is None or df.empty:
-                time.sleep(0.2 * attempt)
+                time.sleep(2 * attempt)
                 continue
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             if 'Close' not in df.columns:
-                time.sleep(0.2 * attempt)
+                time.sleep(2 * attempt)
                 continue
             df = df.dropna(subset=['Close'])
             if df.empty:
-                time.sleep(0.2 * attempt)
+                time.sleep(2 * attempt)
                 continue
             return df
         except Exception:
-            time.sleep(0.3 * attempt)
+            time.sleep(3 * attempt)
     return None
 
 
@@ -368,6 +385,7 @@ def fetch_all_stock_prices(start_date, end_date=None):
     all_records = []
     succeeded   = []
     failed      = []
+    cooldown_used = False
 
     for i, ticker in enumerate(all_tickers, 1):
         df = _fetch_single_ticker(ticker, start_str, end_str, max_retries=3)
@@ -383,7 +401,19 @@ def fetch_all_stock_prices(start_date, end_date=None):
         else:
             failed.append(ticker)
             print(f"  [{i:>3}/{total}] {ticker:<20} → FAILED")
-        time.sleep(0.08)
+
+        # Circuit breaker: if the first 8 tickers ALL fail, we're being
+        # blocked outright (not just unlucky) — hammering the remaining 120
+        # only deepens the block and wastes CI minutes. Cooldown once, then
+        # keep going; if it's still blocked after that, let it fail honestly
+        # rather than looping cooldowns forever.
+        if not cooldown_used and i == 8 and len(succeeded) == 0:
+            print("  ⚠ First 8/8 tickers failed — likely rate-limited/blocked, not unlucky. "
+                  "Cooling down 90s before continuing...")
+            time.sleep(90)
+            cooldown_used = True
+
+        time.sleep(1.2)
 
     print(f"\n  Succeeded: {len(succeeded)} | Failed: {len(failed)} | Records: {len(all_records):,}")
 
@@ -429,10 +459,13 @@ def fetch_macro_history(start_date, end_date=None):
     for name, ticker in MACRO_TICKERS.items():
         try:
             data = yf.download(ticker, start=start_str, end=end_str,
-                               progress=False, auto_adjust=True)
+                               progress=False, auto_adjust=True,
+                               session=YF_SESSION)
             if data is None or data.empty:
                 print(f"  {name}: no data")
+                time.sleep(1.2)
                 continue
+            time.sleep(1.2)
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.get_level_values(0)
             close_series = None

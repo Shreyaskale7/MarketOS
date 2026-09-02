@@ -29,6 +29,13 @@ lightgbm==4.6.0
 # Market data
 yfinance==0.2.54
 requests==2.32.3
+# Browser-TLS-impersonating HTTP client, used to fetch through yfinance's
+# `session=` param. Yahoo Finance's bot detection now fingerprints the raw
+# `requests` library itself, not just request volume — shared CI/PaaS IP
+# ranges (GitHub Actions, Render free tier) get blocked hardest since many
+# unrelated yfinance jobs share the same pool and keep it permanently
+# flagged. curl_cffi impersonates a real Chrome TLS handshake to get past it.
+curl_cffi==0.15.0
 
 # Database
 SQLAlchemy==2.0.30

@@ -204,8 +204,8 @@ def draw_cover(canv, doc):
     canv.setFont("Helvetica", 8)
     canv.drawCentredString(
         PAGE_W / 2, PAGE_H - 163 * mm,
-        "Reference stack: Python 3.10+ · SQLAlchemy/SQLite · scikit-learn · SciPy SLSQP · "
-        "Flask · yfinance · Groq LLM · zero paid data feeds")
+        "Reference stack: Python 3.10+ · SQLAlchemy/PostgreSQL · scikit-learn/XGBoost/LightGBM · SciPy "
+        "SLSQP · Flask · yfinance · Groq LLM · zero paid data feeds · deployed and automated")
 
     canv.setFillColor(colors.HexColor("#475569"))
     canv.setFont("Helvetica", 7.6)

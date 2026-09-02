@@ -90,20 +90,33 @@ BLOCKS = [
 ("h2", "6.7 Frontend"),
 ("alts", [
     ["<b>Single-file HTML dashboard</b>",
-     "1,481 lines, no build step, opens from disk — ideal for development and demos.",
-     "Maintained alongside a second React implementation; the two will drift.",
-     "*Chosen for demos"],
-    ["Vite + React", "Componentised, the deployable path, better long-term maintainability.",
-     "Needs a build step; currently duplicates the dashboard's panels.", "*Also shipped, for deployment"],
-    ["Consolidate to one", "Removes the drift risk entirely.", "Not yet done.", "Tier-3 roadmap"],
+     "No build step, served directly by Flask (<font face='Courier'>marketos_api.py</font>'s "
+     "<font face='Courier'>/dashboard</font> route just reads the file and returns it) — one moving part "
+     "in production, zero deploy-time JS toolchain to keep working on a free host.",
+     "A single ~3,000-line file rather than componentised source.",
+     "*Chosen — and the only implementation left"],
+    ["Vite + React", "Componentised, better long-term maintainability once the product has more than one "
+     "engineer on the frontend.",
+     "Was actually built and briefly shipped alongside the HTML dashboard, then found to be entirely "
+     "unserved — nothing in the backend ever pointed at it — and removed in the deployment cleanup pass. "
+     "Two implementations of the same seven panels drifting apart is worse than one implementation that "
+     "isn't componentised.",
+     "Built, then deleted"],
 ]),
+("warn", ("A real instance of \"delete it, don't leave it to rot\"",
+          "The React scaffold above wasn't hypothetical — it sat in the repository for weeks, fully "
+          "wired with its own component tree, while the running application never imported or served a "
+          "single file from it. Nothing failed loudly, because nothing ever tried to use it; it was only "
+          "found by grepping the serving code for any reference to the directory and getting zero hits. "
+          "That is the general failure mode of dead code: it costs nothing to keep and nothing points at "
+          "it, so nothing forces the question of whether it should still exist.")),
 
 ("h2", "6.8 LLM provider"),
 ("alts", [
-    ["<b>Groq (llama-3.1-8b-instant), Gemini fallback</b>",
-     "Sub-second inference on a free tier; OpenAI-compatible, so the client is ordinary HTTP.",
-     "Smaller model than the README claims (documentation drift, flagged in Part 8); free-tier rate "
-     "limits.",
+    ["<b>Groq (openai/gpt-oss-20b), Gemini fallback</b>",
+     "1–2 second inference on a free tier; OpenAI-compatible, so the client is ordinary HTTP.",
+     "Free-tier rate limits; the specific model name is a Groq-hosted deployment, not a vendor guarantee "
+     "of permanence — see the box below.",
      "*Chosen"],
     ["OpenAI / Anthropic", "Stronger reasoning and instruction-following.", "Paid — conflicts with the "
      "zero-cost goal.", "Rejected"],
@@ -112,6 +125,17 @@ BLOCKS = [
     ["FinBERT, local classifier", "Purpose-built for financial sentiment; no API dependency at all.",
      "No written rationale, which the daily narrative currently relies on.", "Worth benchmarking"],
 ]),
+("warn", ("Live incident: the originally-chosen model was retired mid-project",
+          "The system originally hardcoded <font face='Courier'>llama-3.1-8b-instant</font>. Groq "
+          "discontinued every Llama model on its platform; every sentiment and narrative call started "
+          "failing with <font face='Courier'>404 model_not_found</font>. The retry logic treated the 404 "
+          "the same as a transient network error — sleep, retry, fail — turning one dead model name into "
+          "a multi-second hang per sector across the full sector list. Fixed two ways: switched to "
+          "<font face='Courier'>openai/gpt-oss-20b</font>, and made the model name an environment variable "
+          "(<font face='Courier'>GROQ_MODEL</font>) rather than a hardcoded string, so the next provider "
+          "deprecation is a config change, not a redeploy. Also added a fail-fast rule: a 4xx response now "
+          "aborts immediately instead of retrying an error that can never succeed. The general lesson: any "
+          "external model name you hardcode is a promise the vendor did not make to you.")),
 
 ("h2", "6.9 Scheduling"),
 ("alts", [
@@ -197,8 +221,10 @@ BLOCKS = [
          "<font face='Courier'>sector_df[sector_df.index &lt; as_of_date]</font>.\n"
          "<b>2. What did it cost?</b> If the answer is an invented flat percentage, the backtest is "
          "decorative.\n"
-         "<b>3. How many independent observations?</b> Not trading days — <i>rebalances</i>. This "
-         "system's 3-year backtest has 21.")),
+         "<b>3. How many independent observations?</b> Not trading days — <i>rebalances</i>. At the "
+         "system's shipped quarterly frequency, a 5-year window has 15, a 10-year window has 35. The "
+         "original 3-year window (7 rebalances) was dropped from the public dashboard for exactly this "
+         "reason — a sample too small to support a conclusion in either direction.")),
 
 # ═══════════════════════════════════════════════════════════════════
 ("part", (8, "The codebase, annotated",
@@ -221,7 +247,7 @@ if _db_path and _db_path.startswith("postgres://"):
      "sector/subsector/weight denormalised in — deliberately, to remove a join from the hottest query "
      "path."],
     ["<font face='Courier'>macro_data</font>", "3,781", "One row per calendar day, 14 macro series."],
-    ["<font face='Courier'>model_versions</font>", "1,730 (175 active)", "The audit trail: IC, MAE, "
+    ["<font face='Courier'>model_versions</font>", "~140 active, growing daily", "The audit trail: IC, MAE, "
      "directional accuracy, training window, top-20 feature importances, per model."],
     ["<font face='Courier'>forward_forecasts</font>", "112", "Bull/base/bear per subsector per horizon."],
     ["<font face='Courier'>prediction_accuracy</font>", "94,500", "Predicted vs realised, for the "
@@ -246,16 +272,22 @@ STRICT_SECTOR_DRIVER_MAP = {                 # domain knowledge overrides a data
       "domain expert who does not write Python can audit the assumptions directly. The strict driver map "
       "exists because without it, Energy's “primary driver” on a volatile-rupee day would be reported as "
       "the rupee, which is domain-nonsense: Energy is driven by crude, and the rupee is second-order."),
-("warn", ("Three data defects, found by counting",
-          "130 entries resolve to only <b>127 unique tickers</b>. "
+("warn", ("Two remaining data defects, found by counting — a third has been fixed",
+          "130 entries resolve to only <b>128 unique tickers</b>. "
           "<font face='Courier'>MPHASIS.NS</font> appears under both “LTIMindtree” and “Mphasis” — a "
           "documented substitution that still double-counts one company across two subsectors. "
-          "<b><font face='Courier'>M&amp;M.NS</font> is listed as both “Tata Motors” and “Mahindra &amp; "
-          "Mahindra”</b> — Tata Motors is actually <font face='Courier'>TATAMOTORS.NS</font>; this "
-          "subsector's entire return series double-weights M&amp;M and omits Tata Motors. "
           "<font face='Courier'>EICHERMOT.NS</font> appears under both “Eicher Motors” and “VE Commercial "
           "Vehicles” — defensible (VECV is an Eicher JV with no separate listing) but should be one entry "
           "at combined weight.\n\nSeparately, the seven sector weights sum to <b>0.95</b>, not 1.00.")),
+("box", ("Fixed since first writing — kept here as the worked example of how this class of bug hides",
+         "A third case was worse than the two above and was found the same way — by counting, not by any "
+         "error message. <font face='Courier'>M&amp;M.NS</font> was listed as the ticker for <i>both</i> "
+         "“Tata Motors” and “Mahindra &amp; Mahindra” (Tata Motors is actually "
+         "<font face='Courier'>TATAMOTORS.NS</font>). Passenger Vehicles' entire historical return series "
+         "double-weighted M&amp;M and never included Tata Motors at all — silently, for the taxonomy's "
+         "entire history, because a wrong ticker string produces a real, plausible-looking price series, "
+         "not an error. Corrected and the subsector re-fetched; see the change log's §2.2 for the fix "
+         "record.")),
 
 ("h2", "8.3 data_loader.py — the synthetic-flows decision"),
 ("code", """fii_net_crore = (nifty_return - usdinr_return) * 1500

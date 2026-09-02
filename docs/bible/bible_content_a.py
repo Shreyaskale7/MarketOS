@@ -493,8 +493,8 @@ Both 25% vol, equal weights:
 ("code", """rolling_max = cumulative.cummax()
 drawdown    = (cumulative - rolling_max) / rolling_max
 
-Measured, 3-year backtest:  -4.85%
-Measured, 5-year v5:       -12.20%"""),
+Measured, 5-year (quarterly rebalance, n=15):  -5.83%
+Measured, 10-year (quarterly rebalance, n=35): -21.61%"""),
 
 ("h2", "2.10 The risk-free rate"),
 ("p", "<b>What.</b> The return available with no risk; the baseline every excess return is measured "
@@ -537,14 +537,16 @@ Measured, 5-year v5:       -12.20%"""),
      "Easily gamed. You can win 80% of months and still lose money if the other 20% are catastrophic. "
      "Always read next to max drawdown."],
 ])),
-("box", ("Worked — Sharpe from the shipped 3-year backtest",
-         "21 periods of 30 trading days; periods per year = 252/30 = 8.4.\n\n"
-         "Risk-free per period = 1.065<sup>30/252</sup> − 1 = 0.75%. Mean period return 1.63% → mean "
-         "excess 0.88%. Std of period returns 2.79%.\n\n"
-         "Sharpe = (0.0088 / 0.0279) × √8.4 = 0.315 × 2.898 = <b>0.91</b>. The engine reports 0.97 — it "
-         "takes the std of the excess series rather than the raw series.\n\n"
-         "<b>The honest statement is “about 1.0, ±0.2, on 21 observations”</b>, since the standard error "
-         "of a Sharpe estimate is roughly 1/√n.")),
+("box", ("Worked — Sharpe from the shipped 5-year backtest",
+         "15 periods of 63 trading days (quarterly); periods per year = 252/63 = 4.\n\n"
+         "Risk-free per period = 1.065<sup>63/252</sup> − 1 ≈ 1.6%. Portfolio annualised 19.11% vs NIFTY "
+         "13.58% → net alpha +5.53%. Sharpe on the period-return series comes out to <b>0.864</b>, "
+         "information ratio (alpha mean / alpha std) <b>0.601</b>.\n\n"
+         "<b>The honest statement is “Sharpe ≈0.86 on 15 observations”</b>, since the standard error of a "
+         "Sharpe estimate is roughly 1/√n — with n=15 that is a wide band. The same strategy measured over "
+         "10 years (n=35, the largest available sample) comes in far weaker: Sharpe 0.375, IR 0.021, net "
+         "alpha +0.02% — essentially flat. See §9.2–9.4 for the full window-instability discussion; the "
+         "honest headline is the 10-year number, not the flattering 5-year one.")),
 ("alts", [
     ["<b>Sharpe + IR + max DD + win rate together</b>",
      "Four metrics that fail differently; reading them jointly is what catches a flattering single "
