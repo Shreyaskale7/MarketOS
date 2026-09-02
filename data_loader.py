@@ -35,20 +35,18 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 HISTORY_YEARS = 10
 
 # ─────────────────────────────────────────────────────────────────
-# YAHOO FINANCE SESSION — browser impersonation
+# YAHOO FINANCE SESSION
 # ─────────────────────────────────────────────────────────────────
-# yfinance's plain requests.Session is trivially fingerprinted and blocked —
-# Yahoo tightened bot detection in 2024-25 and now flags the TLS/header
-# signature of the raw `requests` library, not just request volume. Shared CI
-# IP ranges (GitHub Actions, most PaaS free tiers) get hit hardest because
-# thousands of unrelated yfinance jobs share the same pool and keep it
-# permanently flagged. curl_cffi impersonates a real Chrome TLS fingerprint,
-# which is the standard fix the yfinance community converged on.
-try:
-    from curl_cffi import requests as _cf_requests
-    YF_SESSION = _cf_requests.Session(impersonate="chrome")
-except ImportError:
-    YF_SESSION = None
+# yfinance>=0.2.4x already REQUIRES curl_cffi and creates its own
+# browser-impersonating session (curl_cffi.requests.Session(impersonate=
+# "chrome")) internally via a singleton, the moment curl_cffi is installed
+# and no session is explicitly passed. Passing a second, separately-created
+# curl_cffi session into yf.download(session=...) bypasses that singleton's
+# cookie/crumb management and breaks Yahoo auth in a different way (seen as
+# "'str' object has no attribute 'name'" / YFTzMissingError). yfinance's own
+# source is explicit about this: "Solution: stop setting session, let YF
+# handle." So: just have curl_cffi installed (see requirements.txt) and
+# never pass session= — yfinance does the impersonation on its own.
 
 MACRO_TICKERS = {
     "usdinr":      "INR=X",
@@ -304,7 +302,6 @@ def _fetch_single_ticker(ticker, start_str, end_str, max_retries=3):
             df = yf.download(
                 ticker, start=start_str, end=end_str,
                 auto_adjust=True, progress=False, threads=False,
-                session=YF_SESSION,
             )
             if df is None or df.empty:
                 time.sleep(2 * attempt)
@@ -459,8 +456,7 @@ def fetch_macro_history(start_date, end_date=None):
     for name, ticker in MACRO_TICKERS.items():
         try:
             data = yf.download(ticker, start=start_str, end=end_str,
-                               progress=False, auto_adjust=True,
-                               session=YF_SESSION)
+                               progress=False, auto_adjust=True)
             if data is None or data.empty:
                 print(f"  {name}: no data")
                 time.sleep(1.2)
