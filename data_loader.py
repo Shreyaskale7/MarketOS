@@ -28,7 +28,11 @@ from datetime import datetime, timedelta, date
 from database import (engine, DailyPrice, MacroData,
                       get_session, ensure_tables_exist)
 from classification import MARKET_CLASSIFICATION
+from market_calendar import is_trading_day
 import time
+import zipfile
+import io
+import csv
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 
@@ -47,6 +51,215 @@ HISTORY_YEARS = 10
 # source is explicit about this: "Solution: stop setting session, let YF
 # handle." So: just have curl_cffi installed (see requirements.txt) and
 # never pass session= — yfinance does the impersonation on its own.
+#
+# But even with that fixed, Yahoo itself started hard-blocking whole shared
+# cloud IP ranges — confirmed by direct testing: BOTH GitHub Actions' and
+# Render's outbound IPs get YFRateLimitError on every single ticker, no
+# exceptions, and curl_cffi's TLS impersonation does not get past it (it
+# fixes fingerprint-based bot detection, not an IP-level block). So for the
+# 130-stock daily fetch, Yahoo is no longer a viable primary source from
+# either of this project's cloud hosts.
+
+# ─────────────────────────────────────────────────────────────────
+# NSE BHAVCOPY — the real fix
+# ─────────────────────────────────────────────────────────────────
+# NSE India publishes one free bulk file per trading day covering EVERY
+# listed equity's OHLCV — no per-ticker request, so no per-ticker rate limit
+# exists to hit. NSE's own bot protection (Akamai) still requires browser
+# impersonation (a plain requests.Session gets 403 even on the homepage —
+# confirmed by testing), but curl_cffi's Chrome impersonation gets a clean
+# 200 from both the homepage and the bhavcopy archive, from every host this
+# project runs on. One session is bootstrapped by visiting the homepage
+# first to collect the Akamai cookie, then reused for every day's file.
+_NSE_SESSION = None
+
+def _get_nse_session():
+    global _NSE_SESSION
+    if _NSE_SESSION is not None:
+        return _NSE_SESSION
+    try:
+        from curl_cffi import requests as cf_requests
+    except ImportError:
+        return None
+    s = cf_requests.Session(impersonate="chrome")
+    try:
+        s.get("https://www.nseindia.com", timeout=15)
+        _NSE_SESSION = s
+        return s
+    except Exception:
+        return None
+
+
+def _trading_days_between(d0, d1):
+    """Inclusive list of NSE trading days from d0 to d1."""
+    days = []
+    cur = d0
+    while cur <= d1:
+        if is_trading_day(cur):
+            days.append(cur)
+        cur += timedelta(days=1)
+    return days
+
+
+def _fetch_nse_bhavcopy_day(trading_date):
+    """Downloads NSE's full cash-market bhavcopy for one trading day.
+    Returns {NSE_SYMBOL: {'open','high','low','close','volume'}} for all
+    regular-series (SctySrs == 'EQ') equities, or None on any failure."""
+    session = _get_nse_session()
+    if session is None:
+        return None
+    date_str = trading_date.strftime("%Y%m%d")
+    url = (f"https://nsearchives.nseindia.com/content/cm/"
+           f"BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip")
+    try:
+        r = session.get(url, timeout=25)
+        if r.status_code != 200 or len(r.content) < 1000:
+            return None
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        df = pd.read_csv(z.open(z.namelist()[0]))
+        df = df[(df['Sgmt'] == 'CM') & (df['SctySrs'] == 'EQ')]
+        out = {}
+        for _, row in df.iterrows():
+            try:
+                out[row['TckrSymb']] = {
+                    'open':   float(row['OpnPric']),
+                    'high':   float(row['HghPric']),
+                    'low':    float(row['LwPric']),
+                    'close':  float(row['ClsPric']),
+                    'volume': float(row['TtlTradgVol']) if pd.notna(row['TtlTradgVol']) else 0.0,
+                }
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return None
+
+
+def _fetch_nse_index_close_day(trading_date):
+    """Downloads NSE's daily index-close file for one trading day and
+    extracts Nifty 50 and India VIX closes. Returns {'nifty':, 'india_vix':}
+    (keys present only if found), or None on failure."""
+    session = _get_nse_session()
+    if session is None:
+        return None
+    date_str = trading_date.strftime("%d%m%Y")
+    url = f"https://nsearchives.nseindia.com/content/indices/ind_close_all_{date_str}.csv"
+    try:
+        r = session.get(url, timeout=20)
+        if r.status_code != 200:
+            return None
+        out = {}
+        reader = csv.DictReader(io.StringIO(r.text))
+        for row in reader:
+            name = (row.get('Index Name') or '').strip()
+            if name == 'Nifty 50':
+                out['nifty'] = float(row['Closing Index Value'])
+            elif name == 'India VIX':
+                out['india_vix'] = float(row['Closing Index Value'])
+        return out or None
+    except Exception:
+        return None
+
+
+def _fetch_via_nse_bhavcopy(start_date, end_date, ticker_meta, nse_symbols):
+    """Bulk-fetches all tracked tickers for the given range via NSE bhavcopy,
+    one request per TRADING DAY (not per ticker). Computes daily_return from
+    one extra trading day fetched before start_date, matching the old
+    per-ticker yfinance path's semantics (first-day return unavailable is
+    dropped, same as before).
+
+    Returns a list of price records on success (possibly with some tickers
+    missing/unmatched — normal), or None if NSE itself was unreachable for
+    every day tried, signalling the caller to fall back to yfinance.
+    """
+    start_d = (start_date.date() if hasattr(start_date, 'date') and not isinstance(start_date, date)
+               else start_date if isinstance(start_date, date)
+               else datetime.strptime(str(start_date), '%Y-%m-%d').date())
+    if end_date:
+        end_d = (end_date.date() if hasattr(end_date, 'date') and not isinstance(end_date, date)
+                 else end_date if isinstance(end_date, date)
+                 else datetime.strptime(str(end_date), '%Y-%m-%d').date())
+    else:
+        end_d = datetime.today().date()
+    end_d = min(end_d, datetime.today().date())
+
+    baseline_day = None
+    probe = start_d - timedelta(days=1)
+    for _ in range(10):
+        if is_trading_day(probe):
+            baseline_day = probe
+            break
+        probe -= timedelta(days=1)
+
+    days = sorted(set(([baseline_day] if baseline_day else []) + _trading_days_between(start_d, end_d)))
+    if not days:
+        return []
+
+    total = len(ticker_meta)
+    print(f"\n  Fetching {total} companies via NSE bhavcopy: {days[0]} → {days[-1]} "
+          f"({len(days)} trading day(s), 1 request/day)")
+
+    per_ticker_series = {t: [] for t in ticker_meta}
+    ok_days = 0
+    for d in days:
+        day_data = _fetch_nse_bhavcopy_day(d)
+        if day_data is None:
+            print(f"    {d}: bhavcopy unavailable")
+        else:
+            ok_days += 1
+            print(f"    {d}: {len(day_data)} equities ✓")
+            for ticker, nse_sym in nse_symbols.items():
+                row = day_data.get(nse_sym)
+                if row:
+                    per_ticker_series[ticker].append((d, row['open'], row['high'], row['low'],
+                                                       row['close'], row['volume']))
+        time.sleep(0.5)
+
+    if ok_days == 0:
+        return None
+
+    all_records = []
+    succeeded, failed = [], []
+    for ticker, series in per_ticker_series.items():
+        meta = ticker_meta.get(ticker, {})
+        series.sort(key=lambda x: x[0])
+        if len(series) < 2 and not (len(series) == 1 and series[0][0] >= start_d):
+            failed.append(ticker)
+            continue
+        prev_close = series[0][4]
+        rows_added = 0
+        for (d, o, h, l, c, v) in series[1:]:
+            ret = (c / prev_close - 1.0) if prev_close else 0.0
+            prev_close = c
+            if d < start_d:
+                continue
+            if abs(ret) > 0.20 or c <= 0:
+                # NSE circuit breakers cap single-stock moves at 20%.
+                continue
+            all_records.append({
+                'date':         d,
+                'ticker':       ticker,
+                'company_name': meta.get('company', ''),
+                'sector':       meta.get('sector', ''),
+                'subsector':    meta.get('subsector', ''),
+                'open_price':   o,
+                'high_price':   h,
+                'low_price':    l,
+                'close_price':  c,
+                'volume':       v,
+                'daily_return': ret,
+                'nifty_weight': meta.get('nifty_weight', 0.001),
+            })
+            rows_added += 1
+        (succeeded if rows_added > 0 else failed).append(ticker)
+
+    print(f"\n  NSE bhavcopy: {ok_days}/{len(days)} day(s) fetched | "
+          f"{len(succeeded)}/{total} tickers matched | Records: {len(all_records):,}")
+    if failed:
+        shown = ', '.join(failed[:10]) + ('...' if len(failed) > 10 else '')
+        print(f"  ⚠ {len(failed)} ticker(s) not found in bhavcopy: {shown}")
+
+    return all_records
 
 MACRO_TICKERS = {
     "usdinr":      "INR=X",
@@ -365,7 +578,31 @@ def _parse_single_ticker_records(ticker, df, ticker_meta):
 
 
 def fetch_all_stock_prices(start_date, end_date=None):
-    """Fetches prices for all companies using per-ticker fetching."""
+    """Fetches prices for all companies. Tries NSE's own bulk bhavcopy first
+    (one file per trading day, all ~2600 listed equities in it — no
+    per-ticker request at all, so no per-ticker rate limit exists) and only
+    falls back to the slower per-ticker yfinance path if NSE is unreachable.
+    See _fetch_via_nse_bhavcopy() for why: Yahoo Finance began hard-blocking
+    shared cloud IP ranges (GitHub Actions AND Render both, confirmed by
+    testing) in a way curl_cffi's TLS impersonation does not get past, while
+    NSE's own Akamai bot-protection does yield to the same impersonation.
+    """
+    ticker_meta = build_ticker_metadata()
+    nse_symbols = {t: t.replace('.NS', '') for t in ticker_meta}
+
+    nse_records = _fetch_via_nse_bhavcopy(start_date, end_date, ticker_meta, nse_symbols)
+    if nse_records is not None:
+        return nse_records
+
+    print("  ⚠ NSE bhavcopy unreachable — falling back to per-ticker yfinance "
+          "(slower, and Yahoo may itself be rate-limiting this IP)")
+    return _fetch_all_stock_prices_yfinance_fallback(start_date, end_date, ticker_meta)
+
+
+def _fetch_all_stock_prices_yfinance_fallback(start_date, end_date, ticker_meta):
+    """The original per-ticker yfinance path. Kept as a fallback for when
+    NSE's bhavcopy is unreachable (e.g. NSE itself is down) — see
+    fetch_all_stock_prices() above, which tries NSE first."""
     def _yfinance_end():
         return (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
 
@@ -373,7 +610,6 @@ def fetch_all_stock_prices(start_date, end_date=None):
     start_str = (start_date.strftime('%Y-%m-%d')
                  if hasattr(start_date, 'strftime') else str(start_date))
 
-    ticker_meta = build_ticker_metadata()
     all_tickers = list(ticker_meta.keys())
     total       = len(all_tickers)
 
@@ -453,7 +689,34 @@ def fetch_macro_history(start_date, end_date=None):
     print(f"\n  Fetching macro data: {start_str} → {end_str}")
 
     series = {}
+
+    # NSE covers nifty & india_vix directly (see _fetch_via_nse_bhavcopy's
+    # docstring for why this now takes priority over Yahoo for anything NSE
+    # actually publishes). The remaining macro series (usdinr, brent_crude,
+    # sensex, nasdaq, sp500, gold) are genuinely non-Indian/global and NSE
+    # has no equivalent for them — those stay on the yfinance attempt below,
+    # best-effort, same as before.
+    _nse_trading_days = _trading_days_between(start_date if isinstance(start_date, date)
+                                               else datetime.strptime(start_str, '%Y-%m-%d').date(),
+                                               datetime.strptime(end_str, '%Y-%m-%d').date() - timedelta(days=1))
+    for key in ('nifty', 'india_vix'):
+        vals = {}
+        for d in _nse_trading_days:
+            idx = _fetch_nse_index_close_day(d)
+            if idx and key in idx:
+                vals[d] = idx[key]
+            time.sleep(0.3)
+        if vals:
+            s = pd.Series(vals).sort_index()
+            s.index = pd.to_datetime(s.index)
+            series[key] = s
+            print(f"  {key}: {len(s)} days ✓ (via NSE)")
+        else:
+            print(f"  {key}: unavailable via NSE, will try Yahoo")
+
     for name, ticker in MACRO_TICKERS.items():
+        if name in series:
+            continue  # already sourced from NSE above
         try:
             data = yf.download(ticker, start=start_str, end=end_str,
                                progress=False, auto_adjust=True)

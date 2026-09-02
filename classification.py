@@ -215,7 +215,7 @@ MARKET_CLASSIFICATION = {
                     "GAIL":                     {"ticker": "GAIL.NS",        "sector_weight": 0.008},
                     "Indraprastha Gas":         {"ticker": "IGL.NS",         "sector_weight": 0.004},
                     "Mahanagar Gas":            {"ticker": "MGL.NS",         "sector_weight": 0.002},
-                    "Gujarat Gas":              {"ticker": "GUJGASLTD.NS",  "sector_weight": 0.003},
+                    "Gujarat Gas":              {"ticker": "GUJENERGY.NS",  "sector_weight": 0.003},
                 }
             },
 
@@ -406,7 +406,7 @@ MARKET_CLASSIFICATION = {
                 },
                 "companies": {
                     "Maruti Suzuki":            {"ticker": "MARUTI.NS",      "sector_weight": 0.026},
-                    "Tata Motors":              {"ticker": "TATAMOTORS.NS",  "sector_weight": 0.018},
+                    "Tata Motors":              {"ticker": "TMPV.NS",        "sector_weight": 0.018},
                     "Mahindra & Mahindra":      {"ticker": "M&M.NS",         "sector_weight": 0.024},
                     "Hyundai Motor India":      {"ticker": "HYUNDAI.NS",     "sector_weight": 0.008},
                 }
